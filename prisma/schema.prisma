@@ -1,0 +1,431 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Usuarios del sistema
+// ============================================================
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  name          String
+  phone         String?
+  role          UserRole  @default(CUSTOMER)
+  image         String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  // Relaciones
+  ownedBusinesses Business[]  @relation("BusinessOwner")
+  customers       Customer[]   @relation("CustomerUser")
+  employees       Employee[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  BUSINESS_ADMIN
+  CUSTOMER
+}
+
+// ============================================================
+// Negocios (barberías, salones, estudios de tatuaje, consultorios)
+// ============================================================
+model Business {
+  id              String   @id @default(uuid())
+  name            String
+  slug            String   @unique
+  description     String?
+  phone           String?
+  email           String?
+  address         String?
+  city            String?
+  province        String?
+  postalCode      String?
+  logo            String?
+  banner          String?
+  primaryColor    String?
+  secondaryColor  String?
+  whatsapp        String?
+  instagram       String?
+  facebook        String?
+  website         String?
+  openingTime     String?
+  closingTime     String?
+  timezone        String?  @default("America/New_York")
+  ownerId         String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  // Relaciones
+  owner          User           @relation("BusinessOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  subscription   Subscription?
+  employees      Employee[]
+  services       Service[]
+  blockedDates   BlockedDate[]
+  customers      Customer[]
+  appointments   Appointment[]
+  notifications  Notification[]
+  settings       Setting?
+  auditLogs      AuditLog[]
+
+  @@index([ownerId])
+  @@index([slug])
+  @@index([city])
+  @@index([deletedAt])
+  @@map("businesses")
+}
+
+// ============================================================
+// Planes de suscripción
+// ============================================================
+model Plan {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  price       Decimal  @db.Decimal(10, 2)
+  currency    String   @default("USD")
+  interval    String   @default("monthly")
+  features    Json?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relaciones
+  subscriptions Subscription[]
+
+  @@index([isActive])
+  @@map("plans")
+}
+
+// ============================================================
+// Suscripciones de negocios a planes
+// ============================================================
+model Subscription {
+  id                 String           @id @default(uuid())
+  businessId         String           @unique
+  planId             String
+  status             SubscriptionStatus @default(TRIALING)
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelledAt        DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  // Relaciones
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  plan     Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([businessId])
+  @@index([planId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  CANCELLED
+  PAST_DUE
+}
+
+// ============================================================
+// Empleados del negocio
+// ============================================================
+model Employee {
+  id           String     @id @default(uuid())
+  businessId   String
+  userId       String?
+  name         String
+  email        String?
+  phone        String?
+  avatar       String?
+  specialties  String[]
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  // Relaciones
+  business         Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user             User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  services         EmployeeService[]
+  availability     Availability[]
+  blockedDates     BlockedDate[]
+  appointments     Appointment[]
+
+  @@index([businessId])
+  @@index([userId])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("employees")
+}
+
+// ============================================================
+// Servicios ofrecidos por el negocio
+// ============================================================
+model Service {
+  id          String   @id @default(uuid())
+  businessId  String
+  name        String
+  description String?
+  duration    Int      // Duración en minutos
+  price       Decimal  @db.Decimal(10, 2)
+  currency    String   @default("USD")
+  category    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  // Relaciones
+  business    Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employees   EmployeeService[]
+  appointments Appointment[]
+
+  @@index([businessId])
+  @@index([category])
+  @@index([isActive])
+  @@index([deletedAt])
+  @@map("services")
+}
+
+// ============================================================
+// Tabla de unión entre empleados y servicios
+// ============================================================
+model EmployeeService {
+  id         String   @id @default(uuid())
+  employeeId String
+  serviceId  String
+  createdAt  DateTime @default(now())
+
+  // Relaciones
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, serviceId])
+  @@index([employeeId])
+  @@index([serviceId])
+  @@map("employee_services")
+}
+
+// ============================================================
+// Disponibilidad horaria de empleados
+// ============================================================
+model Availability {
+  id         String   @id @default(uuid())
+  employeeId String
+  dayOfWeek  Int      // 0 = Domingo, 1 = Lunes, ..., 6 = Sábado
+  startTime  String   // Formato HH:mm
+  endTime    String   // Formato HH:mm
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relaciones
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, dayOfWeek])
+  @@index([employeeId])
+  @@index([dayOfWeek])
+  @@map("availability")
+}
+
+// ============================================================
+// Fechas bloqueadas (días libres, vacaciones, etc.)
+// ============================================================
+model BlockedDate {
+  id         String    @id @default(uuid())
+  businessId String
+  employeeId String?
+  date       DateTime  @db.Date
+  startTime  String?   // Si se bloquea solo un rango específico
+  endTime    String?
+  reason     String?
+  createdAt  DateTime  @default(now())
+
+  // Relaciones
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([employeeId])
+  @@index([date])
+  @@map("blocked_dates")
+}
+
+// ============================================================
+// Clientes del negocio
+// ============================================================
+model Customer {
+  id         String   @id @default(uuid())
+  businessId String
+  userId     String?
+  name       String
+  email      String?
+  phone      String?
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  // Relaciones
+  business     Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user         User?          @relation("CustomerUser", fields: [userId], references: [id], onDelete: SetNull)
+  appointments Appointment[]
+
+  @@index([businessId])
+  @@index([userId])
+  @@index([email])
+  @@index([phone])
+  @@index([deletedAt])
+  @@map("customers")
+}
+
+// ============================================================
+// Citas / turnos
+// ============================================================
+model Appointment {
+  id           String           @id @default(uuid())
+  businessId   String
+  serviceId    String
+  employeeId   String
+  customerId   String
+  date         DateTime         @db.Date
+  startTime    String           // Formato HH:mm
+  endTime      String           // Formato HH:mm
+  status       AppointmentStatus @default(PENDING)
+  notes        String?
+  cancelledBy  String?
+  cancelReason String?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  deletedAt    DateTime?
+
+  // Relaciones
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  service  Service  @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@index([businessId])
+  @@index([serviceId])
+  @@index([employeeId])
+  @@index([customerId])
+  @@index([date])
+  @@index([status])
+  @@index([date, employeeId])
+  @@index([date, startTime])
+  @@index([deletedAt])
+  @@map("appointments")
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+// ============================================================
+// Notificaciones
+// ============================================================
+model Notification {
+  id         String             @id @default(uuid())
+  userId     String
+  businessId String?
+  type       NotificationType
+  subject    String
+  message    String
+  status     NotificationStatus @default(PENDING)
+  metadata   Json?
+  createdAt  DateTime           @default(now())
+  readAt     DateTime?
+
+  // Relaciones
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([businessId])
+  @@index([status])
+  @@index([type])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  EMAIL
+  SMS
+  WHATSAPP
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+// ============================================================
+// Configuración del negocio (clave-valor)
+// ============================================================
+model Setting {
+  id         String   @id @default(uuid())
+  businessId String   @unique
+  key        String   @unique
+  value      Json
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relaciones
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@map("settings")
+}
+
+// ============================================================
+// Registro de auditoría
+// ============================================================
+model AuditLog {
+  id         String   @id @default(uuid())
+  businessId String?
+  userId     String?
+  action     String
+  entity     String
+  entityId   String?
+  oldData    Json?
+  newData    Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  // Relaciones
+  business Business? @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId])
+  @@index([userId])
+  @@index([entity])
+  @@index([entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
