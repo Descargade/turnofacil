@@ -15,6 +15,7 @@ import {
   MessageCircleQuestion,
   ImageIcon,
   Star,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,6 +88,7 @@ export default function ConfiguracionPage() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("general");
+  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [newQuestion, setNewQuestion] = useState(emptyQuestion);
   const [newOption, setNewOption] = useState("");
 
@@ -189,14 +191,16 @@ export default function ConfiguracionPage() {
           timezone: config.timezone,
         }),
       });
+      const data = await res.json();
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Error al guardar");
+        throw new Error(data.error || `Error HTTP ${res.status}`);
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al guardar");
+      const msg = err instanceof Error ? err.message : "Error desconocido al guardar";
+      setError(msg);
+      console.error("Save error:", err);
     } finally {
       setSaving(false);
     }
@@ -213,12 +217,13 @@ export default function ConfiguracionPage() {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // --- Preguntas ---
   function addQuestion() {
     if (!newQuestion.text.trim()) return;
     const q: BookingQuestion = {
       ...newQuestion,
       id: Date.now().toString(),
-      options: newQuestion.type === "select" ? newQuestion.options : [],
+      options: newQuestion.type === "select" ? (newQuestion.options || []) : [],
     };
     setConfig((prev) => ({
       ...prev,
@@ -232,6 +237,41 @@ export default function ConfiguracionPage() {
       ...prev,
       bookingQuestions: prev.bookingQuestions.filter((q) => q.id !== id),
     }));
+  }
+
+  function startEditQuestion(q: BookingQuestion) {
+    setEditingQuestionId(q.id);
+    setNewQuestion({
+      text: q.text,
+      type: q.type,
+      options: q.options ? [...q.options] : [],
+      required: q.required,
+    });
+  }
+
+  function saveEditQuestion() {
+    if (!editingQuestionId || !newQuestion.text.trim()) return;
+    setConfig((prev) => ({
+      ...prev,
+      bookingQuestions: prev.bookingQuestions.map((q) =>
+        q.id === editingQuestionId
+          ? {
+              ...q,
+              text: newQuestion.text,
+              type: newQuestion.type,
+              options: newQuestion.type === "select" ? (newQuestion.options || []) : [],
+              required: newQuestion.required,
+            }
+          : q
+      ),
+    }));
+    setEditingQuestionId(null);
+    setNewQuestion(emptyQuestion);
+  }
+
+  function cancelEditQuestion() {
+    setEditingQuestionId(null);
+    setNewQuestion(emptyQuestion);
   }
 
   function addOptionToQuestion() {
@@ -282,7 +322,14 @@ export default function ConfiguracionPage() {
 
       {error && (
         <div className="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
+          <p className="font-semibold">Error al guardar</p>
+          <p className="mt-1">{error}</p>
+        </div>
+      )}
+
+      {saved && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          ¡Los cambios se guardaron correctamente!
         </div>
       )}
 
@@ -332,26 +379,17 @@ export default function ConfiguracionPage() {
           <Card>
             <CardHeader>
               <CardTitle>Información del negocio</CardTitle>
-              <CardDescription>
-                Datos básicos que ven tus clientes
-              </CardDescription>
+              <CardDescription>Datos básicos que ven tus clientes</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Nombre del negocio *</Label>
-                  <Input
-                    value={config.name}
-                    onChange={(e) => updateField("name", e.target.value)}
-                  />
+                  <Input value={config.name} onChange={(e) => updateField("name", e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>Email</Label>
-                  <Input
-                    type="email"
-                    value={config.email || ""}
-                    onChange={(e) => updateField("email", e.target.value || null)}
-                  />
+                  <Input type="email" value={config.email || ""} onChange={(e) => updateField("email", e.target.value || null)} />
                 </div>
               </div>
               <div className="space-y-2">
@@ -366,42 +404,25 @@ export default function ConfiguracionPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Teléfono</Label>
-                  <Input
-                    value={config.phone || ""}
-                    onChange={(e) => updateField("phone", e.target.value || null)}
-                    placeholder="+54 11 1234-5678"
-                  />
+                  <Input value={config.phone || ""} onChange={(e) => updateField("phone", e.target.value || null)} placeholder="+54 11 1234-5678" />
                 </div>
                 <div className="space-y-2">
                   <Label>Dirección</Label>
-                  <Input
-                    value={config.address || ""}
-                    onChange={(e) => updateField("address", e.target.value || null)}
-                    placeholder="Av. Corrientes 1234"
-                  />
+                  <Input value={config.address || ""} onChange={(e) => updateField("address", e.target.value || null)} placeholder="Av. Corrientes 1234" />
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
                   <Label>Ciudad</Label>
-                  <Input
-                    value={config.city || ""}
-                    onChange={(e) => updateField("city", e.target.value || null)}
-                  />
+                  <Input value={config.city || ""} onChange={(e) => updateField("city", e.target.value || null)} />
                 </div>
                 <div className="space-y-2">
                   <Label>Provincia</Label>
-                  <Input
-                    value={config.province || ""}
-                    onChange={(e) => updateField("province", e.target.value || null)}
-                  />
+                  <Input value={config.province || ""} onChange={(e) => updateField("province", e.target.value || null)} />
                 </div>
                 <div className="space-y-2">
                   <Label>Código postal</Label>
-                  <Input
-                    value={config.postalCode || ""}
-                    onChange={(e) => updateField("postalCode", e.target.value || null)}
-                  />
+                  <Input value={config.postalCode || ""} onChange={(e) => updateField("postalCode", e.target.value || null)} />
                 </div>
               </div>
               <Separator className="my-6" />
@@ -410,34 +431,19 @@ export default function ConfiguracionPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label>WhatsApp</Label>
-                    <Input
-                      value={config.whatsapp || ""}
-                      onChange={(e) => updateField("whatsapp", e.target.value || null)}
-                      placeholder="+54 11 1234-5678"
-                    />
+                    <Input value={config.whatsapp || ""} onChange={(e) => updateField("whatsapp", e.target.value || null)} placeholder="+54 11 1234-5678" />
                   </div>
                   <div className="space-y-2">
                     <Label>Instagram</Label>
-                    <Input
-                      value={config.instagram || ""}
-                      onChange={(e) => updateField("instagram", e.target.value || null)}
-                      placeholder="@usuario"
-                    />
+                    <Input value={config.instagram || ""} onChange={(e) => updateField("instagram", e.target.value || null)} placeholder="@usuario" />
                   </div>
                   <div className="space-y-2">
                     <Label>Facebook</Label>
-                    <Input
-                      value={config.facebook || ""}
-                      onChange={(e) => updateField("facebook", e.target.value || null)}
-                    />
+                    <Input value={config.facebook || ""} onChange={(e) => updateField("facebook", e.target.value || null)} />
                   </div>
                   <div className="space-y-2">
                     <Label>Sitio web</Label>
-                    <Input
-                      value={config.website || ""}
-                      onChange={(e) => updateField("website", e.target.value || null)}
-                      placeholder="https://..."
-                    />
+                    <Input value={config.website || ""} onChange={(e) => updateField("website", e.target.value || null)} placeholder="https://..." />
                   </div>
                 </div>
               </div>
@@ -450,24 +456,12 @@ export default function ConfiguracionPage() {
           <Card>
             <CardHeader>
               <CardTitle>Apariencia de la página de reservas</CardTitle>
-              <CardDescription>
-                Subí imágenes desde tu dispositivo y elegí los colores de tu marca
-              </CardDescription>
+              <CardDescription>Subí imágenes y elegí los colores de tu marca</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-6 sm:grid-cols-2">
-                <ImageUpload
-                  label="Logo del negocio"
-                  value={config.logo}
-                  onChange={(v) => updateField("logo", v)}
-                  aspect="square"
-                />
-                <ImageUpload
-                  label="Banner / portada"
-                  value={config.banner}
-                  onChange={(v) => updateField("banner", v)}
-                  aspect="wide"
-                />
+                <ImageUpload label="Logo del negocio" value={config.logo} onChange={(v) => updateField("logo", v)} aspect="square" />
+                <ImageUpload label="Banner / portada" value={config.banner} onChange={(v) => updateField("banner", v)} aspect="wide" />
               </div>
               <Separator />
               <div>
@@ -476,51 +470,23 @@ export default function ConfiguracionPage() {
                   <div className="space-y-2">
                     <Label>Color principal</Label>
                     <div className="flex gap-2">
-                      <input
-                        type="color"
-                        value={primaryColor}
-                        onChange={(e) => updateField("primaryColor", e.target.value)}
-                        className="h-10 w-10 cursor-pointer rounded border"
-                      />
-                      <Input
-                        value={primaryColor}
-                        onChange={(e) => updateField("primaryColor", e.target.value)}
-                        className="font-mono"
-                      />
+                      <input type="color" value={primaryColor} onChange={(e) => updateField("primaryColor", e.target.value)} className="h-10 w-10 cursor-pointer rounded border" />
+                      <Input value={primaryColor} onChange={(e) => updateField("primaryColor", e.target.value)} className="font-mono" />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label>Color secundario</Label>
                     <div className="flex gap-2">
-                      <input
-                        type="color"
-                        value={secondaryColor}
-                        onChange={(e) => updateField("secondaryColor", e.target.value)}
-                        className="h-10 w-10 cursor-pointer rounded border"
-                      />
-                      <Input
-                        value={secondaryColor}
-                        onChange={(e) => updateField("secondaryColor", e.target.value)}
-                        className="font-mono"
-                      />
+                      <input type="color" value={secondaryColor} onChange={(e) => updateField("secondaryColor", e.target.value)} className="h-10 w-10 cursor-pointer rounded border" />
+                      <Input value={secondaryColor} onChange={(e) => updateField("secondaryColor", e.target.value)} className="font-mono" />
                     </div>
                   </div>
                 </div>
                 <div className="mt-4 rounded-lg border p-4">
-                  <p className="mb-2 text-xs text-muted-foreground">Vista previa de colores</p>
+                  <p className="mb-2 text-xs text-muted-foreground">Vista previa</p>
                   <div className="flex gap-2">
-                    <div
-                      className="h-8 w-24 rounded-md text-xs text-white flex items-center justify-center font-medium"
-                      style={{ backgroundColor: primaryColor }}
-                    >
-                      Principal
-                    </div>
-                    <div
-                      className="h-8 w-24 rounded-md text-xs text-white flex items-center justify-center font-medium"
-                      style={{ backgroundColor: secondaryColor }}
-                    >
-                      Secundario
-                    </div>
+                    <div className="h-8 w-24 rounded-md text-xs text-white flex items-center justify-center font-medium" style={{ backgroundColor: primaryColor }}>Principal</div>
+                    <div className="h-8 w-24 rounded-md text-xs text-white flex items-center justify-center font-medium" style={{ backgroundColor: secondaryColor }}>Secundario</div>
                   </div>
                 </div>
               </div>
@@ -537,21 +503,15 @@ export default function ConfiguracionPage() {
                 Galería de trabajos
               </CardTitle>
               <CardDescription>
-                Mostrá fotos de tus mejores trabajos. Aparecen como carrusel en tu página de reservas
+                Fotos de tus mejores trabajos. Se ven como carrusel en tu página
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <GalleryUpload
-                value={config.gallery}
-                onChange={(v) => updateField("gallery", v)}
-                max={12}
-              />
+              <GalleryUpload value={config.gallery} onChange={(v) => updateField("gallery", v)} max={12} />
               {config.gallery.length === 0 && (
                 <div className="mt-4 rounded-lg border border-dashed p-6 text-center text-muted-foreground">
                   <ImageIcon className="mx-auto mb-2 h-8 w-8 opacity-40" />
-                  <p className="text-sm">
-                    Todavía no subiste fotos. Agregá imágenes de tus trabajos para que los clientes vean tu calidad.
-                  </p>
+                  <p className="text-sm">Todavía no subiste fotos.</p>
                 </div>
               )}
             </CardContent>
@@ -567,34 +527,35 @@ export default function ConfiguracionPage() {
                 Preguntas personalizadas
               </CardTitle>
               <CardDescription>
-                Agregá preguntas que los clientes deben responder al reservar (ej: "¿Tenés alergias?", "¿Es la primera vez?")
+                Preguntas que los clientes responden al reservar
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {config.bookingQuestions.length > 0 && (
                 <div className="space-y-2">
                   {config.bookingQuestions.map((q) => (
-                    <div
-                      key={q.id}
-                      className="flex items-center gap-3 rounded-lg border p-3"
-                    >
+                    <div key={q.id} className="flex items-center gap-3 rounded-lg border p-3">
                       <GripVertical className="h-4 w-4 text-muted-foreground/40" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{q.text}</p>
                         <div className="flex items-center gap-2 mt-0.5">
                           <Badge variant="outline" className="text-[10px]">
-                            {q.type === "text" ? "Texto libre" : q.type === "yes_no" ? "Sí/No" : "Opción múltiple"}
+                            {q.type === "text" ? "Texto" : q.type === "yes_no" ? "Sí/No" : "Opciones"}
                           </Badge>
-                          {q.required && (
-                            <Badge variant="secondary" className="text-[10px]">Obligatoria</Badge>
-                          )}
+                          {q.required && <Badge variant="secondary" className="text-[10px]">Obligatoria</Badge>}
                           {q.options && q.options.length > 0 && (
-                            <span className="text-[10px] text-muted-foreground">
-                              {q.options.length} opciones
-                            </span>
+                            <span className="text-[10px] text-muted-foreground">{q.options.length} opciones</span>
                           )}
                         </div>
                       </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => startEditQuestion(q)}
+                        disabled={editingQuestionId === q.id}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -611,26 +572,24 @@ export default function ConfiguracionPage() {
               <Separator />
 
               <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-                <p className="text-sm font-semibold">Agregar nueva pregunta</p>
+                <p className="text-sm font-semibold">
+                  {editingQuestionId ? "Editando pregunta" : "Nueva pregunta"}
+                </p>
                 <Input
                   value={newQuestion.text}
-                  onChange={(e) =>
-                    setNewQuestion((prev) => ({ ...prev, text: e.target.value }))
-                  }
-                  placeholder="Ej: ¿Tenés alguna alergia que debamos saber?"
+                  onChange={(e) => setNewQuestion((prev) => ({ ...prev, text: e.target.value }))}
+                  placeholder="Ej: ¿Tenés alguna alergia?"
                 />
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-1">
-                    <Label className="text-xs">Tipo de respuesta</Label>
+                    <Label className="text-xs">Tipo</Label>
                     <Select
                       value={newQuestion.type}
                       onValueChange={(v: "text" | "select" | "yes_no") =>
                         setNewQuestion((prev) => ({ ...prev, type: v, options: [] }))
                       }
                     >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="text">Texto libre</SelectItem>
                         <SelectItem value="yes_no">Sí / No</SelectItem>
@@ -643,25 +602,16 @@ export default function ConfiguracionPage() {
                     <div className="flex items-center gap-2 h-9">
                       <button
                         type="button"
-                        onClick={() =>
-                          setNewQuestion((prev) => ({
-                            ...prev,
-                            required: !prev.required,
-                          }))
-                        }
+                        onClick={() => setNewQuestion((prev) => ({ ...prev, required: !prev.required }))}
                         className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-colors ${
                           newQuestion.required
                             ? "border-primary bg-primary text-primary-foreground"
                             : "border-muted-foreground/30 bg-background"
                         }`}
                       >
-                        {newQuestion.required && (
-                          <Check className="h-3 w-3" />
-                        )}
+                        {newQuestion.required && <Check className="h-3 w-3" />}
                       </button>
-                      <span className="text-sm">
-                        {newQuestion.required ? "Sí" : "No"}
-                      </span>
+                      <span className="text-sm">{newQuestion.required ? "Sí" : "No"}</span>
                     </div>
                   </div>
                 </div>
@@ -681,24 +631,14 @@ export default function ConfiguracionPage() {
                           }
                         }}
                       />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={addOptionToQuestion}
-                      >
+                      <Button type="button" variant="outline" size="sm" onClick={addOptionToQuestion}>
                         <Plus className="h-4 w-4" />
                       </Button>
                     </div>
                     {newQuestion.options && newQuestion.options.length > 0 && (
                       <div className="flex flex-wrap gap-1">
                         {newQuestion.options.map((opt, i) => (
-                          <Badge
-                            key={i}
-                            variant="secondary"
-                            className="cursor-pointer"
-                            onClick={() => removeOptionFromQuestion(i)}
-                          >
+                          <Badge key={i} variant="secondary" className="cursor-pointer" onClick={() => removeOptionFromQuestion(i)}>
                             {opt} ×
                           </Badge>
                         ))}
@@ -707,14 +647,20 @@ export default function ConfiguracionPage() {
                   </div>
                 )}
 
-                <Button
-                  size="sm"
-                  onClick={addQuestion}
-                  disabled={!newQuestion.text.trim()}
-                >
-                  <Plus className="mr-1 h-3.5 w-3.5" />
-                  Agregar pregunta
-                </Button>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={editingQuestionId ? saveEditQuestion : addQuestion} disabled={!newQuestion.text.trim()}>
+                    {editingQuestionId ? (
+                      <><Check className="mr-1 h-3.5 w-3.5" /> Guardar edición</>
+                    ) : (
+                      <><Plus className="mr-1 h-3.5 w-3.5" /> Agregar</>
+                    )}
+                  </Button>
+                  {editingQuestionId && (
+                    <Button size="sm" variant="ghost" onClick={cancelEditQuestion}>
+                      Cancelar
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -725,55 +671,32 @@ export default function ConfiguracionPage() {
           <Card>
             <CardHeader>
               <CardTitle>Horarios de atención</CardTitle>
-              <CardDescription>
-                Horario general del negocio (cada empleado puede tener los suyos)
-              </CardDescription>
+              <CardDescription>Horario general del negocio</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-2">
-                  <Label>Hora de apertura</Label>
+                  <Label>Apertura</Label>
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="time"
-                      value={config.openingTime || "09:00"}
-                      onChange={(e) => updateField("openingTime", e.target.value)}
-                    />
+                    <Input type="time" value={config.openingTime || "09:00"} onChange={(e) => updateField("openingTime", e.target.value)} />
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Hora de cierre</Label>
+                  <Label>Cierre</Label>
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-muted-foreground" />
-                    <Input
-                      type="time"
-                      value={config.closingTime || "19:00"}
-                      onChange={(e) => updateField("closingTime", e.target.value)}
-                    />
+                    <Input type="time" value={config.closingTime || "19:00"} onChange={(e) => updateField("closingTime", e.target.value)} />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Zona horaria</Label>
-                  <Select
-                    value={config.timezone || "America/Argentina/Buenos_Aires"}
-                    onValueChange={(v) => updateField("timezone", v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Select value={config.timezone || "America/Argentina/Buenos_Aires"} onValueChange={(v) => updateField("timezone", v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="America/Argentina/Buenos_Aires">
-                        Buenos Aires (GMT-3)
-                      </SelectItem>
+                      <SelectItem value="America/Argentina/Buenos_Aires">Buenos Aires (GMT-3)</SelectItem>
                       <SelectItem value="America/Cordoba">Córdoba (GMT-3)</SelectItem>
                       <SelectItem value="America/Mendoza">Mendoza (GMT-3)</SelectItem>
-                      <SelectItem value="America/Argentina/Tucuman">
-                        Tucumán (GMT-3)
-                      </SelectItem>
-                      <SelectItem value="America/Argentina/Salta">
-                        Salta (GMT-3)
-                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -788,28 +711,20 @@ export default function ConfiguracionPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Eye className="h-5 w-5" />
-                Vista previa de tu página de reservas
+                Vista previa
               </CardTitle>
-              <CardDescription>
-                Así es como ven tu página los clientes
-              </CardDescription>
+              <CardDescription>Así ven tu página los clientes</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-hidden rounded-xl border-2 border-surface-200 bg-white shadow-lg">
-                {/* Banner */}
                 {config.banner && (
-                  <div className="h-32 overflow-hidden bg-surface-100">
+                  <div className="h-28 overflow-hidden bg-surface-100">
                     <img src={config.banner} alt="Banner" className="h-full w-full object-cover" />
                   </div>
                 )}
-
-                {/* Branding */}
                 <div className="border-b border-surface-100 bg-white px-4 py-4">
                   <div className="flex items-center gap-3">
-                    <div
-                      className="flex h-12 w-12 items-center justify-center rounded-xl text-white shadow-md"
-                      style={{ backgroundColor: primaryColor }}
-                    >
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl text-white shadow-md" style={{ backgroundColor: primaryColor }}>
                       {config.logo ? (
                         <img src={config.logo} alt="Logo" className="h-12 w-12 rounded-xl object-cover" />
                       ) : (
@@ -817,17 +732,11 @@ export default function ConfiguracionPage() {
                       )}
                     </div>
                     <div>
-                      <h2 className="font-display text-lg font-bold text-surface-900">
-                        {config.name || "Tu negocio"}
-                      </h2>
-                      {config.description && (
-                        <p className="text-xs text-surface-500 line-clamp-1">{config.description}</p>
-                      )}
+                      <h2 className="font-display text-lg font-bold text-surface-900">{config.name || "Tu negocio"}</h2>
+                      {config.description && <p className="text-xs text-surface-500 line-clamp-1">{config.description}</p>}
                     </div>
                   </div>
                 </div>
-
-                {/* Galería preview */}
                 {config.gallery.length > 0 && (
                   <div className="border-b border-surface-100 px-4 py-3">
                     <p className="mb-2 text-xs font-semibold text-surface-400">Nuestros trabajos</p>
@@ -845,49 +754,20 @@ export default function ConfiguracionPage() {
                     </div>
                   </div>
                 )}
-
-                {/* Simulación paso 1 */}
                 <div className="px-4 py-4">
-                  <p className="text-xs font-semibold text-surface-500">Paso 1 de 5 · Servicio</p>
-                  <div className="mt-1 mb-3 flex gap-1">
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <div
-                        key={i}
-                        className="h-1 flex-1 rounded-full"
-                        style={{ backgroundColor: i === 1 ? primaryColor : "#e5e7eb" }}
-                      />
-                    ))}
-                  </div>
-                  <h3 className="font-display text-sm font-bold text-surface-900">Elegí tu servicio</h3>
+                  <p className="text-xs font-semibold text-surface-500">Paso 1 · Servicio</p>
+                  <h3 className="mt-1 font-display text-sm font-bold text-surface-900">Elegí tu servicio</h3>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     {["Corte masculino", "Barba", "Corte femenino", "Tinte"].map((name, i) => (
-                      <div
-                        key={name}
-                        className="rounded-lg border-2 p-3 text-left"
-                        style={
-                          i === 0
-                            ? { borderColor: primaryColor, backgroundColor: `${primaryColor}08` }
-                            : { borderColor: "#e5e7eb" }
-                        }
-                      >
+                      <div key={name} className="rounded-lg border-2 p-3" style={i === 0 ? { borderColor: primaryColor, backgroundColor: `${primaryColor}08` } : { borderColor: "#e5e7eb" }}>
                         <p className="text-xs font-semibold text-surface-900">{name}</p>
-                        <div className="mt-1 flex items-center gap-2 text-[10px] text-surface-500">
-                          <span>{[30, 20, 45, 60][i]} min</span>
-                          <span className="font-medium text-surface-700">
-                            ${[3000, 2000, 5000, 8000][i].toLocaleString("es-AR")}
-                          </span>
-                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
-
-                {/* Preguntas preview */}
                 {config.bookingQuestions.length > 0 && (
                   <div className="border-t border-surface-100 px-4 py-3">
-                    <p className="mb-2 text-xs font-semibold text-surface-400">
-                      Tus clientes responderán
-                    </p>
+                    <p className="mb-2 text-xs font-semibold text-surface-400">Preguntas</p>
                     {config.bookingQuestions.slice(0, 2).map((q) => (
                       <div key={q.id} className="mb-1 flex items-center gap-2 text-xs text-surface-600">
                         <MessageCircleQuestion className="h-3 w-3 text-muted-foreground" />
@@ -898,20 +778,14 @@ export default function ConfiguracionPage() {
                   </div>
                 )}
               </div>
-
               <div className="mt-4 flex items-center gap-3">
                 <Button variant="outline" size="sm" asChild>
                   <a href={`/${config.slug}`} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="mr-1 h-3.5 w-3.5" />
-                    Abrir página real
+                    <ExternalLink className="mr-1 h-3.5 w-3.5" /> Abrir página real
                   </a>
                 </Button>
                 <Button variant="outline" size="sm" onClick={copyBookingUrl}>
-                  {copied ? (
-                    <Check className="mr-1 h-3.5 w-3.5 text-green-600" />
-                  ) : (
-                    <Copy className="mr-1 h-3.5 w-3.5" />
-                  )}
+                  {copied ? <Check className="mr-1 h-3.5 w-3.5 text-green-600" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
                   {copied ? "Copiado" : "Copiar enlace"}
                 </Button>
               </div>

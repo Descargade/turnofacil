@@ -10,13 +10,50 @@ interface ImageUploadProps {
   className?: string;
   aspect?: "square" | "wide";
   label?: string;
+  maxSizeKB?: number;
 }
 
-function fileToBase64(file: File): Promise<string> {
+function compressImage(file: File, maxKB: number = 200): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("No canvas context"));
+
+        let { width, height } = img;
+        const maxDim = 600;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+
+        let quality = 0.7;
+        let result = canvas.toDataURL("image/jpeg", quality);
+
+        while (result.length > maxKB * 1024 * 1.37 && quality > 0.1) {
+          quality -= 0.1;
+          result = canvas.toDataURL("image/jpeg", quality);
+        }
+
+        resolve(result);
+      };
+      img.onerror = () => reject(new Error("Error loading image"));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("Error reading file"));
     reader.readAsDataURL(file);
   });
 }
@@ -35,19 +72,15 @@ export function ImageUpload({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert("La imagen debe pesar menos de 2MB");
-      return;
-    }
-
     setLoading(true);
     try {
-      const base64 = await fileToBase64(file);
-      onChange(base64);
+      const compressed = await compressImage(file);
+      onChange(compressed);
     } catch {
-      alert("Error al leer la imagen");
+      alert("Error al procesar la imagen");
     } finally {
       setLoading(false);
+      if (inputRef.current) inputRef.current.value = "";
     }
   }
 
@@ -65,15 +98,11 @@ export function ImageUpload({
         {loading ? (
           <div className="flex flex-col items-center gap-2">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/50" />
-            <p className="text-xs text-muted-foreground">Procesando...</p>
+            <p className="text-xs text-muted-foreground">Comprimiendo...</p>
           </div>
         ) : value ? (
           <>
-            <img
-              src={value}
-              alt="Preview"
-              className="h-full w-full object-cover"
-            />
+            <img src={value} alt="Preview" className="h-full w-full object-cover" />
             <button
               type="button"
               onClick={(e) => {
@@ -91,7 +120,7 @@ export function ImageUpload({
             <p className="text-xs text-center px-2">
               Click para subir imagen
               <br />
-              <span className="text-[10px]">JPG, PNG, máx 2MB</span>
+              <span className="text-[10px]">JPG, PNG</span>
             </p>
           </div>
         )}
@@ -113,11 +142,7 @@ interface GalleryUploadProps {
   max?: number;
 }
 
-export function GalleryUpload({
-  value,
-  onChange,
-  max = 10,
-}: GalleryUploadProps) {
+export function GalleryUpload({ value, onChange, max = 10 }: GalleryUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
 
@@ -130,14 +155,10 @@ export function GalleryUpload({
 
     setLoading(true);
     try {
-      const base64s = await Promise.all(
-        toProcess.map(async (file) => {
-          if (file.size > 2 * 1024 * 1024) return null;
-          return fileToBase64(file);
-        })
+      const compressed = await Promise.all(
+        toProcess.map((file) => compressImage(file, 150))
       );
-      const valid = base64s.filter((b): b is string => b !== null);
-      onChange([...value, ...valid]);
+      onChange([...value, ...compressed]);
     } catch {
       alert("Error al procesar imágenes");
     } finally {
@@ -184,7 +205,7 @@ export function GalleryUpload({
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        {value.length}/{max} fotos · JPG, PNG, máx 2MB cada una
+        {value.length}/{max} fotos
       </p>
       <input
         ref={inputRef}
