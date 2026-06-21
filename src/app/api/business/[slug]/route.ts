@@ -63,6 +63,11 @@ export async function GET(
         slug: business.slug,
         description: business.description,
         logo: business.logo,
+        banner: business.banner,
+        gallery: Array.isArray(business.gallery) ? business.gallery : [],
+        bookingQuestions: Array.isArray(business.bookingQuestions)
+          ? business.bookingQuestions
+          : [],
         primaryColor: business.primaryColor,
         secondaryColor: business.secondaryColor,
         phone: business.phone,

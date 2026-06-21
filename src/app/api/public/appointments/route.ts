@@ -14,6 +14,7 @@ export async function POST(request: Request) {
       customerEmail,
       customerPhone,
       notes,
+      questionAnswers,
     } = body;
 
     if (!businessSlug || !serviceId || !employeeId || !date || !startTime || !customerName) {
@@ -151,6 +152,16 @@ export async function POST(request: Request) {
       });
     }
 
+    let finalNotes = notes || null;
+    if (questionAnswers && Object.keys(questionAnswers).length > 0) {
+      const answersText = Object.entries(questionAnswers)
+        .map(([q, a]) => `${q}: ${a}`)
+        .join("\n");
+      finalNotes = finalNotes
+        ? `${finalNotes}\n\n--- Respuestas del cliente ---\n${answersText}`
+        : `--- Respuestas del cliente ---\n${answersText}`;
+    }
+
     const appointment = await prisma.appointment.create({
       data: {
         businessId: business.id,
@@ -160,7 +171,7 @@ export async function POST(request: Request) {
         date: appointmentDate,
         startTime,
         endTime,
-        notes: notes || null,
+        notes: finalNotes,
       },
       include: {
         service: { select: { id: true, name: true, price: true } },

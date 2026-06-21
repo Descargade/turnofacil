@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -29,6 +29,11 @@ import {
   MapPin,
   Phone,
   Info,
+  Star,
+  ChevronUp,
+  ChevronDown,
+  Zap,
+  ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, getInitials, calculateEndTime } from "@/lib/utils";
@@ -39,6 +44,15 @@ interface BusinessData {
   slug: string;
   description: string | null;
   logo: string | null;
+  banner: string | null;
+  gallery: string[];
+  bookingQuestions: {
+    id: string;
+    text: string;
+    type: "text" | "select" | "yes_no";
+    options?: string[];
+    required: boolean;
+  }[];
   primaryColor: string | null;
   secondaryColor: string | null;
   phone: string | null;
@@ -92,22 +106,31 @@ interface BookingState {
   date: Date | null;
   timeSlot: string | null;
   customerInfo: CustomerInfo;
+  questionAnswers: Record<string, string>;
 }
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 6;
 
 const STEP_LABELS = [
   "Servicio",
   "Profesional",
   "Fecha y hora",
   "Tus datos",
+  "Preguntas",
   "Confirmación",
+];
+
+const mockReviews = [
+  { name: "Martín G.", rating: 5, text: "Excelente atención, muy profesional. Siempre voy con Carlos." },
+  { name: "Luciana P.", rating: 5, text: "El mejor salón de la zona. Los recomiendo ampliamente." },
+  { name: "Diego R.", rating: 4, text: "Muy buen servicio y puntuales. Volveré seguro." },
 ];
 
 export default function BookingPage() {
   const params = useParams();
   const router = useRouter();
   const businessSlug = params.businessSlug as string;
+  const galleryRef = useRef<HTMLDivElement>(null);
 
   const [business, setBusiness] = useState<BusinessData | null>(null);
   const [services, setServices] = useState<ServiceData[]>([]);
@@ -128,11 +151,15 @@ export default function BookingPage() {
     date: null,
     timeSlot: null,
     customerInfo: { name: "", email: "", phone: "", notes: "" },
+    questionAnswers: {},
   });
 
   const [selectedWeekStart, setSelectedWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
+
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [expandedReview, setExpandedReview] = useState<number | null>(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -143,12 +170,10 @@ export default function BookingPage() {
         const data = await res.json();
         setBusiness(data.business);
         setServices(data.services.filter((s: ServiceData) => s.isActive));
-        setEmployees(
-          data.employees.filter((e: EmployeeData) => e.isActive)
-        );
+        setEmployees(data.employees.filter((e: EmployeeData) => e.isActive));
         setExistingAppointments(data.existingAppointments || []);
       } catch {
-        setError("No se pudo cargar la información del negocio. Verificá el enlace y intentá de nuevo.");
+        setError("No se pudo cargar la información del negocio.");
       } finally {
         setLoading(false);
       }
@@ -203,10 +228,7 @@ export default function BookingPage() {
           isToday(date) &&
           isBefore(new Date(), new Date(`${dateStr}T${time}:00`));
 
-        slots.push({
-          time,
-          available: !isBooked && !isPast,
-        });
+        slots.push({ time, available: !isBooked && !isPast });
       }
 
       return slots;
@@ -246,10 +268,19 @@ export default function BookingPage() {
           booking.customerInfo.email.includes("@") &&
           booking.customerInfo.phone.trim().length >= 7
         );
+      case 5: {
+        if (!business?.bookingQuestions) return true;
+        const required = business.bookingQuestions.filter((q) => q.required);
+        return required.every(
+          (q) =>
+            booking.questionAnswers[q.text] &&
+            booking.questionAnswers[q.text].trim().length > 0
+        );
+      }
       default:
         return false;
     }
-  }, [booking]);
+  }, [booking, business]);
 
   const groupedServices = useMemo(() => {
     const groups: Record<string, ServiceData[]> = {};
@@ -293,11 +324,7 @@ export default function BookingPage() {
   }
 
   function handleSelectDate(date: Date) {
-    setBooking((prev) => ({
-      ...prev,
-      date,
-      timeSlot: null,
-    }));
+    setBooking((prev) => ({ ...prev, date, timeSlot: null }));
   }
 
   function handleSelectTimeSlot(time: string) {
@@ -314,8 +341,16 @@ export default function BookingPage() {
     }));
   }
 
+  function handleQuestionAnswer(questionText: string, answer: string) {
+    setBooking((prev) => ({
+      ...prev,
+      questionAnswers: { ...prev.questionAnswers, [questionText]: answer },
+    }));
+  }
+
   async function handleBooking() {
-    if (!booking.service || !booking.employee || !booking.date || !booking.timeSlot) return;
+    if (!booking.service || !booking.employee || !booking.date || !booking.timeSlot)
+      return;
 
     setSubmitting(true);
     try {
@@ -338,19 +373,24 @@ export default function BookingPage() {
           customerEmail: booking.customerInfo.email,
           customerPhone: booking.customerInfo.phone,
           notes: booking.customerInfo.notes,
+          questionAnswers: booking.questionAnswers,
         }),
       });
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.message || "Error al reservar el turno");
+        throw new Error(data.error || "Error al reservar el turno");
       }
 
-      await res.json();
       setBookingSuccess(true);
-
       router.push(
-        `/${businessSlug}/reserva-exitosa?servicio=${encodeURIComponent(booking.service.name)}&empleado=${encodeURIComponent(booking.employee.name)}&fecha=${encodeURIComponent(format(booking.date, "EEEE d 'de' MMMM", { locale: es }))}&hora=${booking.timeSlot}`
+        `/${businessSlug}/reserva-exitosa?servicio=${encodeURIComponent(
+          booking.service.name
+        )}&empleado=${encodeURIComponent(
+          booking.employee.name
+        )}&fecha=${encodeURIComponent(
+          format(booking.date, "EEEE d 'de' MMMM", { locale: es })
+        )}&hora=${booking.timeSlot}`
       );
     } catch {
       setError("No se pudo reservar el turno. Intentá de nuevo más tarde.");
@@ -359,13 +399,19 @@ export default function BookingPage() {
     }
   }
 
+  function scrollGallery(dir: "left" | "right") {
+    if (!galleryRef.current) return;
+    const scrollAmount = dir === "left" ? -200 : 200;
+    galleryRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
+  }
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-surface-50 to-surface-100">
         <div className="text-center">
           <Loader2 className="mx-auto h-12 w-12 animate-spin text-brand-500" />
           <p className="mt-4 text-lg font-medium text-surface-600">
-            Cargando información del negocio...
+            Cargando...
           </p>
         </div>
       </div>
@@ -380,10 +426,10 @@ export default function BookingPage() {
             <AlertCircle className="h-8 w-8 text-error" />
           </div>
           <h1 className="font-display text-xl font-semibold text-surface-900">
-            Oops, algo salió mal
+            Algo salió mal
           </h1>
           <p className="mt-2 text-surface-500">
-            {error || "No se encontró el negocio solicitado."}
+            {error || "No se encontró el negocio."}
           </p>
           <Link
             href="/"
@@ -404,43 +450,38 @@ export default function BookingPage() {
             <Check className="h-8 w-8 text-success" />
           </div>
           <h1 className="font-display text-xl font-semibold text-surface-900">
-            ¡Turno reservado exitosamente!
+            ¡Turno reservado!
           </h1>
           <p className="mt-2 text-surface-500">
-            Recibirás un email de confirmación con los detalles de tu turno.
+            Recibirás un email de confirmación.
           </p>
-          <button
-            onClick={() => router.push(`/${businessSlug}`)}
-            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-brand-700"
-          >
-            Volver al inicio
-          </button>
         </div>
       </div>
     );
   }
 
   const primaryColor = business.primaryColor || "#3b82f6";
+  const hasGallery = business.gallery && business.gallery.length > 0;
+  const hasQuestions =
+    business.bookingQuestions && business.bookingQuestions.length > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-surface-50 via-white to-brand-50/30">
-      {/* Header del negocio */}
-      <header className="border-b border-surface-200 bg-white/80 backdrop-blur-sm">
-        <div className="mx-auto max-w-4xl px-4 py-4 sm:px-6">
-          <Link href="/" className="inline-block">
-            <span className="font-display text-xl font-bold text-brand-600">
-              Turno
-            </span>
-            <span className="font-display text-xl font-bold text-accent-600">
-              Fácil
-            </span>
-          </Link>
+      {/* Banner */}
+      {business.banner && (
+        <div className="relative h-40 overflow-hidden sm:h-52">
+          <img
+            src={business.banner}
+            alt={business.name}
+            className="h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
         </div>
-      </header>
+      )}
 
       {/* Branding del negocio */}
       <div className="border-b border-surface-100 bg-white">
-        <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6">
+        <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6">
           <div className="flex items-center gap-4">
             <div
               className="flex h-14 w-14 items-center justify-center rounded-xl text-white shadow-lg"
@@ -485,6 +526,51 @@ export default function BookingPage() {
         </div>
       </div>
 
+      {/* Galería de fotos */}
+      {hasGallery && (
+        <div className="border-b border-surface-100 bg-white">
+          <div className="mx-auto max-w-4xl px-4 py-4 sm:px-6">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-surface-400">
+                Nuestros trabajos
+              </h3>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => scrollGallery("left")}
+                  className="flex h-6 w-6 items-center justify-center rounded-full border text-surface-400 hover:text-surface-600"
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={() => scrollGallery("right")}
+                  className="flex h-6 w-6 items-center justify-center rounded-full border text-surface-400 hover:text-surface-600"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+            <div
+              ref={galleryRef}
+              className="flex gap-3 overflow-x-auto scroll-smooth pb-2 snap-x snap-mandatory"
+              style={{ scrollbarWidth: "none" }}
+            >
+              {business.gallery.map((img, i) => (
+                <div
+                  key={i}
+                  className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border snap-start"
+                >
+                  <img
+                    src={img}
+                    alt={`Trabajo ${i + 1}`}
+                    className="h-full w-full object-cover transition-transform hover:scale-110"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Indicador de progreso */}
       <div className="sticky top-0 z-30 border-b border-surface-100 bg-white/90 backdrop-blur-sm">
         <div className="mx-auto max-w-4xl px-4 py-3 sm:px-6">
@@ -492,7 +578,7 @@ export default function BookingPage() {
             <span className="text-xs font-semibold text-surface-500">
               Paso {booking.step} de {TOTAL_STEPS}
             </span>
-            <span className="text-xs font-medium text-brand-600">
+            <span className="text-xs font-medium" style={{ color: primaryColor }}>
               {STEP_LABELS[booking.step - 1]}
             </span>
           </div>
@@ -503,11 +589,12 @@ export default function BookingPage() {
                 className={cn(
                   "h-1.5 flex-1 rounded-full transition-all duration-300",
                   i < booking.step
-                    ? "bg-brand-500"
+                    ? "bg-current"
                     : i === booking.step - 1
-                      ? "bg-brand-300"
+                      ? "opacity-60"
                       : "bg-surface-200"
                 )}
+                style={i < booking.step ? { color: primaryColor } : {}}
               />
             ))}
           </div>
@@ -517,8 +604,9 @@ export default function BookingPage() {
                 key={i}
                 className={cn(
                   "transition-colors",
-                  i + 1 <= booking.step ? "text-brand-600" : ""
+                  i + 1 <= booking.step ? "font-semibold" : ""
                 )}
+                style={i + 1 <= booking.step ? { color: primaryColor } : {}}
               >
                 {label}
               </span>
@@ -530,7 +618,7 @@ export default function BookingPage() {
       {/* Contenido principal */}
       <main className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="animate-fade-in">
-          {/* Paso 1: Selección de servicio */}
+          {/* Paso 1: Servicio */}
           {booking.step === 1 && (
             <div>
               <h2 className="font-display text-lg font-bold text-surface-900">
@@ -539,7 +627,6 @@ export default function BookingPage() {
               <p className="mt-1 text-sm text-surface-500">
                 Seleccioná el servicio que deseás reservar
               </p>
-
               <div className="mt-6 space-y-6">
                 {Object.entries(groupedServices).map(
                   ([category, categoryServices]) => (
@@ -555,12 +642,20 @@ export default function BookingPage() {
                             className={cn(
                               "group relative rounded-xl border-2 p-4 text-left transition-all duration-200",
                               booking.service?.id === service.id
-                                ? "border-brand-500 bg-brand-50 shadow-md shadow-brand-500/10"
+                                ? "border-current shadow-md"
                                 : "border-surface-200 bg-white hover:border-surface-300 hover:shadow-sm"
                             )}
+                            style={
+                              booking.service?.id === service.id
+                                ? { borderColor: primaryColor, backgroundColor: `${primaryColor}08` }
+                                : {}
+                            }
                           >
                             {booking.service?.id === service.id && (
-                              <div className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-brand-500 text-white">
+                              <div
+                                className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white"
+                                style={{ backgroundColor: primaryColor }}
+                              >
                                 <Check className="h-3.5 w-3.5" />
                               </div>
                             )}
@@ -592,7 +687,7 @@ export default function BookingPage() {
             </div>
           )}
 
-          {/* Paso 2: Selección de empleado */}
+          {/* Paso 2: Empleado */}
           {booking.step === 2 && (
             <div>
               <h2 className="font-display text-lg font-bold text-surface-900">
@@ -601,7 +696,6 @@ export default function BookingPage() {
               <p className="mt-1 text-sm text-surface-500">
                 Seleccioná quién realizará el servicio
               </p>
-
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 {filteredEmployees.map((employee) => (
                   <button
@@ -610,12 +704,20 @@ export default function BookingPage() {
                     className={cn(
                       "group relative rounded-xl border-2 p-4 text-left transition-all duration-200",
                       booking.employee?.id === employee.id
-                        ? "border-brand-500 bg-brand-50 shadow-md shadow-brand-500/10"
+                        ? "border-current shadow-md"
                         : "border-surface-200 bg-white hover:border-surface-300 hover:shadow-sm"
                     )}
+                    style={
+                      booking.employee?.id === employee.id
+                        ? { borderColor: primaryColor, backgroundColor: `${primaryColor}08` }
+                        : {}
+                    }
                   >
                     {booking.employee?.id === employee.id && (
-                      <div className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full bg-brand-500 text-white">
+                      <div
+                        className="absolute right-3 top-3 flex h-6 w-6 items-center justify-center rounded-full text-white"
+                        style={{ backgroundColor: primaryColor }}
+                      >
                         <Check className="h-3.5 w-3.5" />
                       </div>
                     )}
@@ -640,16 +742,14 @@ export default function BookingPage() {
                         </h4>
                         {employee.specialties.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">
-                            {employee.specialties
-                              .slice(0, 3)
-                              .map((specialty) => (
-                                <span
-                                  key={specialty}
-                                  className="inline-flex items-center rounded-full bg-surface-100 px-2 py-0.5 text-[10px] font-medium text-surface-600"
-                                >
-                                  {specialty}
-                                </span>
-                              ))}
+                            {employee.specialties.slice(0, 3).map((s) => (
+                              <span
+                                key={s}
+                                className="inline-flex items-center rounded-full bg-surface-100 px-2 py-0.5 text-[10px] font-medium text-surface-600"
+                              >
+                                {s}
+                              </span>
+                            ))}
                           </div>
                         )}
                       </div>
@@ -657,7 +757,6 @@ export default function BookingPage() {
                   </button>
                 ))}
               </div>
-
               {filteredEmployees.length === 0 && (
                 <div className="rounded-xl border border-surface-200 bg-white p-8 text-center">
                   <User className="mx-auto h-10 w-10 text-surface-300" />
@@ -669,25 +768,19 @@ export default function BookingPage() {
             </div>
           )}
 
-          {/* Paso 3: Selección de fecha y hora */}
+          {/* Paso 3: Fecha y hora */}
           {booking.step === 3 && (
             <div>
               <h2 className="font-display text-lg font-bold text-surface-900">
                 Elegí fecha y hora
               </h2>
               <p className="mt-1 text-sm text-surface-500">
-                Seleccioná el día y horario que mejor te quede
+                Seleccioná el día y horario
               </p>
-
-              {/* Selector de semana */}
               <div className="mt-6 flex items-center justify-between">
                 <button
-                  onClick={() =>
-                    setSelectedWeekStart(
-                      (prev) => addDays(prev, -7)
-                    )
-                  }
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 bg-white text-surface-600 transition-colors hover:bg-surface-50"
+                  onClick={() => setSelectedWeekStart((p) => addDays(p, -7))}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 bg-white text-surface-600 hover:bg-surface-50"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
@@ -695,26 +788,18 @@ export default function BookingPage() {
                   {format(weekDays[0], "MMMM yyyy", { locale: es })}
                 </span>
                 <button
-                  onClick={() =>
-                    setSelectedWeekStart(
-                      (prev) => addDays(prev, 7)
-                    )
-                  }
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 bg-white text-surface-600 transition-colors hover:bg-surface-50"
+                  onClick={() => setSelectedWeekStart((p) => addDays(p, 7))}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-surface-200 bg-white text-surface-600 hover:bg-surface-50"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
-
-              {/* Días de la semana */}
               <div className="mt-4 grid grid-cols-7 gap-2">
                 {weekDays.map((day) => {
                   const dayNum = getDay(day);
                   const isAvailable = availableDays.has(dayNum);
                   const isPast = isBefore(day, new Date()) && !isToday(day);
-                  const isSelected =
-                    booking.date && isSameDay(day, booking.date);
-
+                  const isSelected = booking.date && isSameDay(day, booking.date);
                   return (
                     <button
                       key={day.toISOString()}
@@ -723,11 +808,12 @@ export default function BookingPage() {
                       className={cn(
                         "flex flex-col items-center rounded-xl p-2 text-center transition-all",
                         isSelected
-                          ? "bg-brand-500 text-white shadow-md shadow-brand-500/25"
+                          ? "text-white shadow-md"
                           : isAvailable && !isPast
                             ? "bg-white text-surface-700 hover:bg-brand-50 border border-surface-200 hover:border-brand-300"
                             : "bg-surface-50 text-surface-300 cursor-not-allowed"
                       )}
+                      style={isSelected ? { backgroundColor: primaryColor } : {}}
                     >
                       <span className="text-[10px] font-medium uppercase">
                         {format(day, "EEE", { locale: es })}
@@ -739,23 +825,20 @@ export default function BookingPage() {
                         <span
                           className={cn(
                             "mt-0.5 h-1.5 w-1.5 rounded-full",
-                            isSelected ? "bg-white" : "bg-brand-500"
+                            isSelected ? "bg-white" : ""
                           )}
+                          style={!isSelected ? { backgroundColor: primaryColor } : {}}
                         />
                       )}
                     </button>
                   );
                 })}
               </div>
-
-              {/* Slots de tiempo */}
               {booking.date && (
                 <div className="mt-6">
                   <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-surface-400">
-                    Horarios disponibles para el{" "}
-                    {format(booking.date, "EEEE d 'de' MMMM", {
-                      locale: es,
-                    })}
+                    Horarios para el{" "}
+                    {format(booking.date, "EEEE d 'de' MMMM", { locale: es })}
                   </h3>
                   {timeSlots.length > 0 ? (
                     <div className="grid grid-cols-4 gap-2 sm:grid-cols-6 md:grid-cols-8">
@@ -769,11 +852,16 @@ export default function BookingPage() {
                           className={cn(
                             "rounded-lg border px-3 py-2.5 text-center text-sm font-medium transition-all",
                             booking.timeSlot === slot.time
-                              ? "border-brand-500 bg-brand-500 text-white shadow-md shadow-brand-500/25"
+                              ? "text-white shadow-md"
                               : slot.available
                                 ? "border-surface-200 bg-white text-surface-700 hover:border-brand-300 hover:bg-brand-50"
                                 : "border-surface-100 bg-surface-50 text-surface-300 line-through cursor-not-allowed"
                           )}
+                          style={
+                            booking.timeSlot === slot.time
+                              ? { backgroundColor: primaryColor, borderColor: primaryColor }
+                              : {}
+                          }
                         >
                           {slot.time}
                         </button>
@@ -783,19 +871,17 @@ export default function BookingPage() {
                     <div className="rounded-xl border border-surface-200 bg-white p-6 text-center">
                       <Info className="mx-auto h-8 w-8 text-surface-300" />
                       <p className="mt-2 text-sm text-surface-500">
-                        No hay horarios disponibles para esta fecha.
-                        Probá con otro día.
+                        No hay horarios disponibles. Probá con otro día.
                       </p>
                     </div>
                   )}
                 </div>
               )}
-
               {!booking.date && (
                 <div className="mt-6 rounded-xl border border-dashed border-surface-300 bg-white/50 p-6 text-center">
                   <Calendar className="mx-auto h-8 w-8 text-surface-300" />
                   <p className="mt-2 text-sm text-surface-500">
-                    Seleccioná una fecha para ver los horarios disponibles
+                    Seleccioná una fecha para ver los horarios
                   </p>
                 </div>
               )}
@@ -809,65 +895,45 @@ export default function BookingPage() {
                 Tus datos
               </h2>
               <p className="mt-1 text-sm text-surface-500">
-                Completá tu información para confirmar la reserva
+                Completá tu información para la reserva
               </p>
-
               <div className="mt-6 space-y-4">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">
-                    Nombre completo *
-                  </label>
+                  <Label text="Nombre completo *" />
                   <input
                     type="text"
                     placeholder="Tu nombre y apellido"
                     value={booking.customerInfo.name}
-                    onChange={(e) =>
-                      handleCustomerInfoChange("name", e.target.value)
-                    }
+                    onChange={(e) => handleCustomerInfoChange("name", e.target.value)}
                     className="w-full rounded-lg border border-surface-300 bg-white px-4 py-2.5 text-sm text-surface-900 placeholder-surface-400 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                   />
                 </div>
-
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">
-                    Email *
-                  </label>
+                  <Label text="Email *" />
                   <input
                     type="email"
                     placeholder="tu@email.com"
                     value={booking.customerInfo.email}
-                    onChange={(e) =>
-                      handleCustomerInfoChange("email", e.target.value)
-                    }
+                    onChange={(e) => handleCustomerInfoChange("email", e.target.value)}
                     className="w-full rounded-lg border border-surface-300 bg-white px-4 py-2.5 text-sm text-surface-900 placeholder-surface-400 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                   />
                 </div>
-
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">
-                    Teléfono *
-                  </label>
+                  <Label text="Teléfono *" />
                   <input
                     type="tel"
                     placeholder="+54 11 1234-5678"
                     value={booking.customerInfo.phone}
-                    onChange={(e) =>
-                      handleCustomerInfoChange("phone", e.target.value)
-                    }
+                    onChange={(e) => handleCustomerInfoChange("phone", e.target.value)}
                     className="w-full rounded-lg border border-surface-300 bg-white px-4 py-2.5 text-sm text-surface-900 placeholder-surface-400 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
                   />
                 </div>
-
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-surface-700">
-                    Notas adicionales
-                  </label>
+                  <Label text="Notas adicionales" />
                   <textarea
-                    placeholder="Algún detalle especial que debamos saber..."
+                    placeholder="Algún detalle especial..."
                     value={booking.customerInfo.notes}
-                    onChange={(e) =>
-                      handleCustomerInfoChange("notes", e.target.value)
-                    }
+                    onChange={(e) => handleCustomerInfoChange("notes", e.target.value)}
                     rows={3}
                     className="w-full rounded-lg border border-surface-300 bg-white px-4 py-2.5 text-sm text-surface-900 placeholder-surface-400 outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 resize-none"
                   />
@@ -876,8 +942,82 @@ export default function BookingPage() {
             </div>
           )}
 
-          {/* Paso 5: Confirmación */}
-          {booking.step === 5 && (
+          {/* Paso 5: Preguntas personalizadas */}
+          {booking.step === 5 && hasQuestions && (
+            <div>
+              <h2 className="font-display text-lg font-bold text-surface-900">
+                Unas preguntas más
+              </h2>
+              <p className="mt-1 text-sm text-surface-500">
+                Respondé para que podamos atenderte mejor
+              </p>
+              <div className="mt-6 space-y-5">
+                {business.bookingQuestions!.map((q) => (
+                  <div key={q.id}>
+                    <label className="mb-1.5 block text-sm font-medium text-surface-700">
+                      {q.text}
+                      {q.required && (
+                        <span className="ml-1 text-destructive">*</span>
+                      )}
+                    </label>
+                    {q.type === "text" && (
+                      <input
+                        type="text"
+                        placeholder="Tu respuesta"
+                        value={booking.questionAnswers[q.text] || ""}
+                        onChange={(e) =>
+                          handleQuestionAnswer(q.text, e.target.value)
+                        }
+                        className="w-full rounded-lg border border-surface-300 bg-white px-4 py-2.5 text-sm outline-none transition-colors focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                      />
+                    )}
+                    {q.type === "yes_no" && (
+                      <div className="flex gap-3">
+                        {["Sí", "No"].map((opt) => (
+                          <button
+                            key={opt}
+                            onClick={() => handleQuestionAnswer(q.text, opt)}
+                            className={cn(
+                              "flex-1 rounded-lg border-2 px-4 py-2.5 text-sm font-medium transition-all",
+                              booking.questionAnswers[q.text] === opt
+                                ? "border-current text-white shadow-md"
+                                : "border-surface-200 bg-white text-surface-700 hover:border-surface-300"
+                            )}
+                            style={
+                              booking.questionAnswers[q.text] === opt
+                                ? { backgroundColor: primaryColor, borderColor: primaryColor }
+                                : {}
+                            }
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {q.type === "select" && q.options && (
+                      <select
+                        value={booking.questionAnswers[q.text] || ""}
+                        onChange={(e) =>
+                          handleQuestionAnswer(q.text, e.target.value)
+                        }
+                        className="w-full rounded-lg border border-surface-300 bg-white px-4 py-2.5 text-sm outline-none transition-colors focus:border-brand-500"
+                      >
+                        <option value="">Seleccioná una opción</option>
+                        {q.options.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Paso 6: Confirmación */}
+          {booking.step === 6 && (
             <div>
               <h2 className="font-display text-lg font-bold text-surface-900">
                 Confirmá tu reserva
@@ -885,9 +1025,7 @@ export default function BookingPage() {
               <p className="mt-1 text-sm text-surface-500">
                 Revisá los datos antes de confirmar
               </p>
-
               <div className="mt-6 space-y-4">
-                {/* Resumen */}
                 <div className="rounded-xl border border-surface-200 bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-3 border-b border-surface-100 pb-4">
                     <div
@@ -896,20 +1034,17 @@ export default function BookingPage() {
                     >
                       <Scissors className="h-5 w-5" />
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <p className="text-xs text-surface-500">Servicio</p>
                       <p className="font-semibold text-surface-900">
                         {booking.service?.name}
                       </p>
                     </div>
-                    <div className="ml-auto text-right">
+                    <div className="text-right">
                       <p className="text-xs text-surface-500">Duración</p>
-                      <p className="font-semibold text-surface-900">
-                        {booking.service?.duration} min
-                      </p>
+                      <p className="font-semibold">{booking.service?.duration} min</p>
                     </div>
                   </div>
-
                   <div className="flex items-center gap-3 border-b border-surface-100 py-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-brand-700">
                       <User className="h-5 w-5" />
@@ -921,7 +1056,6 @@ export default function BookingPage() {
                       </p>
                     </div>
                   </div>
-
                   <div className="flex items-center gap-3 border-b border-surface-100 py-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-100 text-accent-700">
                       <Calendar className="h-5 w-5" />
@@ -930,24 +1064,16 @@ export default function BookingPage() {
                       <p className="text-xs text-surface-500">Fecha y hora</p>
                       <p className="font-semibold text-surface-900">
                         {booking.date &&
-                          format(
-                            booking.date,
-                            "EEEE d 'de' MMMM",
-                            { locale: es }
-                          )}
+                          format(booking.date, "EEEE d 'de' MMMM", { locale: es })}
                       </p>
                       <p className="text-sm text-surface-500">
                         {booking.timeSlot} -{" "}
                         {booking.service &&
                           booking.timeSlot &&
-                          calculateEndTime(
-                            booking.timeSlot,
-                            booking.service.duration
-                          )}
+                          calculateEndTime(booking.timeSlot, booking.service.duration)}
                       </p>
                     </div>
                   </div>
-
                   <div className="flex items-center gap-3 border-b border-surface-100 py-4">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-100 text-surface-600">
                       <User className="h-5 w-5" />
@@ -962,32 +1088,67 @@ export default function BookingPage() {
                       </p>
                     </div>
                   </div>
-
+                  {Object.keys(booking.questionAnswers).length > 0 && (
+                    <div className="border-b border-surface-100 py-4">
+                      <p className="text-xs font-medium text-surface-500 mb-2">
+                        Tus respuestas
+                      </p>
+                      {Object.entries(booking.questionAnswers).map(([q, a]) => (
+                        <div key={q} className="flex gap-2 text-sm">
+                          <span className="text-surface-500">{q}:</span>
+                          <span className="font-medium text-surface-700">{a}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex items-center justify-between pt-4">
-                    <span className="text-sm font-medium text-surface-500">
-                      Total
-                    </span>
+                    <span className="text-sm font-medium text-surface-500">Total</span>
                     <span className="text-xl font-bold text-surface-900">
-                      {booking.service &&
-                        formatCurrency(booking.service.price)}
+                      {booking.service && formatCurrency(booking.service.price)}
                     </span>
                   </div>
                 </div>
-
-                {booking.customerInfo.notes && (
-                  <div className="rounded-xl border border-surface-200 bg-white p-4">
-                    <p className="text-xs font-medium text-surface-500">
-                      Notas adicionales
-                    </p>
-                    <p className="mt-1 text-sm text-surface-700">
-                      {booking.customerInfo.notes}
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
           )}
         </div>
+
+        {/* Reseñas */}
+        {booking.step === 1 && (
+          <div className="mt-12 border-t border-surface-100 pt-8">
+            <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-surface-400">
+              Lo que dicen nuestros clientes
+            </h3>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {mockReviews.map((review, i) => (
+                <div
+                  key={i}
+                  className="rounded-xl border border-surface-200 bg-white p-4"
+                >
+                  <div className="flex items-center gap-1 mb-2">
+                    {Array.from({ length: 5 }, (_, j) => (
+                      <Star
+                        key={j}
+                        className={cn(
+                          "h-3.5 w-3.5",
+                          j < review.rating
+                            ? "fill-amber-400 text-amber-400"
+                            : "text-surface-200"
+                        )}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-sm text-surface-600 line-clamp-3">
+                    {review.text}
+                  </p>
+                  <p className="mt-2 text-xs font-medium text-surface-400">
+                    — {review.name}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* Barra de navegación inferior */}
@@ -1012,9 +1173,14 @@ export default function BookingPage() {
               className={cn(
                 "inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition-all",
                 canProceed
-                  ? "bg-brand-600 shadow-brand-600/25 hover:bg-brand-700 hover:shadow-brand-600/40 active:scale-[0.98]"
+                  ? "shadow-brand-600/25 hover:shadow-brand-600/40 active:scale-[0.98]"
                   : "bg-surface-300 cursor-not-allowed shadow-none"
               )}
+              style={
+                canProceed
+                  ? { backgroundColor: primaryColor }
+                  : {}
+              }
             >
               Siguiente
               <ArrowRight className="h-4 w-4" />
@@ -1045,6 +1211,26 @@ export default function BookingPage() {
           )}
         </div>
       </div>
+
+      {/* Footer TurnoFácil */}
+      <footer className="border-t border-surface-100 bg-surface-50 py-4">
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
+          <p className="text-xs text-surface-400">
+            Hecho con{" "}
+            <Link href="/" className="font-semibold text-surface-500 hover:text-brand-600 transition-colors">
+              TurnoFácil
+            </Link>
+          </p>
+        </div>
+      </footer>
     </div>
+  );
+}
+
+function Label({ text }: { text: string }) {
+  return (
+    <label className="mb-1.5 block text-sm font-medium text-surface-700">
+      {text}
+    </label>
   );
 }

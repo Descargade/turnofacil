@@ -56,6 +56,8 @@ model Business {
   postalCode      String?
   logo            String?
   banner          String?
+  gallery         Json?    // Array de URLs/base64 de fotos de trabajos
+  bookingQuestions Json?   // Array de preguntas personalizadas para reservas
   primaryColor    String?
   secondaryColor  String?
   whatsapp        String?

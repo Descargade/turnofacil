@@ -13,10 +13,7 @@ export async function GET() {
     }
 
     const business = await prisma.business.findFirst({
-      where: {
-        id: businessId,
-        deletedAt: null,
-      },
+      where: { id: businessId, deletedAt: null },
       include: {
         subscription: {
           select: {
@@ -32,12 +29,6 @@ export async function GET() {
                 features: true,
               },
             },
-          },
-        },
-        settings: {
-          select: {
-            key: true,
-            value: true,
           },
         },
         _count: {
@@ -103,6 +94,8 @@ export async function PUT(request: Request) {
       colorSecundario,
       logo,
       banner,
+      gallery,
+      bookingQuestions,
       whatsapp,
       instagram,
       facebook,
@@ -134,6 +127,8 @@ export async function PUT(request: Request) {
         secondaryColor: colorSecundario || null,
         logo: logo || null,
         banner: banner || null,
+        gallery: gallery || [],
+        bookingQuestions: bookingQuestions || [],
         whatsapp: whatsapp || null,
         instagram: instagram || null,
         facebook: facebook || null,
@@ -150,24 +145,6 @@ export async function PUT(request: Request) {
         id: business.id,
         name: business.name,
         slug: business.slug,
-        description: business.description,
-        phone: business.phone,
-        email: business.email,
-        address: business.address,
-        city: business.city,
-        province: business.province,
-        postalCode: business.postalCode,
-        primaryColor: business.primaryColor,
-        secondaryColor: business.secondaryColor,
-        logo: business.logo,
-        banner: business.banner,
-        whatsapp: business.whatsapp,
-        instagram: business.instagram,
-        facebook: business.facebook,
-        website: business.website,
-        openingTime: business.openingTime,
-        closingTime: business.closingTime,
-        timezone: business.timezone,
       },
     });
   } catch (error) {
