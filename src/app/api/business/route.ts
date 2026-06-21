@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getBusinessId } from "@/lib/auth-utils";
-import { businessSettingsSchema } from "@/lib/validations";
 
 export async function GET() {
   try {
@@ -90,14 +89,6 @@ export async function PUT(request: Request) {
     }
 
     const body = await request.json();
-    const parsed = businessSettingsSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.message },
-        { status: 400 }
-      );
-    }
 
     const {
       nombre,
@@ -105,60 +96,79 @@ export async function PUT(request: Request) {
       telefono,
       email,
       direccion,
+      ciudad,
+      provincia,
+      codigoPostal,
       colorPrincipal,
+      colorSecundario,
+      logo,
+      banner,
+      whatsapp,
+      instagram,
+      facebook,
+      website,
+      horarioApertura,
+      horarioCierre,
       timezone,
-      formatoHora,
-      idioma,
-      recordatoriosEmail,
-      recordatoriosSMS,
-      horasAntelacionRecordatorio,
-      politicaCancelacion,
-    } = parsed.data;
+    } = body;
+
+    if (!nombre || nombre.trim().length < 2) {
+      return NextResponse.json(
+        { error: "El nombre del negocio es obligatorio" },
+        { status: 400 }
+      );
+    }
 
     const business = await prisma.business.update({
       where: { id: businessId },
       data: {
-        name: nombre,
+        name: nombre.trim(),
         description: descripcion || null,
         phone: telefono || null,
         email: email || null,
         address: direccion || null,
+        city: ciudad || null,
+        province: provincia || null,
+        postalCode: codigoPostal || null,
         primaryColor: colorPrincipal || null,
-        timezone,
+        secondaryColor: colorSecundario || null,
+        logo: logo || null,
+        banner: banner || null,
+        whatsapp: whatsapp || null,
+        instagram: instagram || null,
+        facebook: facebook || null,
+        website: website || null,
+        openingTime: horarioApertura || null,
+        closingTime: horarioCierre || null,
+        timezone: timezone || "America/Argentina/Buenos_Aires",
       },
     });
 
-    const settingsValue = {
-      formatoHora,
-      idioma,
-      recordatoriosEmail,
-      recordatoriosSMS,
-      horasAntelacionRecordatorio,
-      politicaCancelacion: politicaCancelacion || null,
-    };
-
-    const existingSetting = await prisma.setting.findUnique({
-      where: { businessId },
-    });
-
-    if (existingSetting) {
-      await prisma.setting.update({
-        where: { businessId },
-        data: { value: settingsValue },
-      });
-    } else {
-      await prisma.setting.create({
-        data: {
-          businessId,
-          key: "business_settings",
-          value: settingsValue,
-        },
-      });
-    }
-
     return NextResponse.json({
       mensaje: "Negocio actualizado exitosamente",
-      negocio: business,
+      negocio: {
+        id: business.id,
+        name: business.name,
+        slug: business.slug,
+        description: business.description,
+        phone: business.phone,
+        email: business.email,
+        address: business.address,
+        city: business.city,
+        province: business.province,
+        postalCode: business.postalCode,
+        primaryColor: business.primaryColor,
+        secondaryColor: business.secondaryColor,
+        logo: business.logo,
+        banner: business.banner,
+        whatsapp: business.whatsapp,
+        instagram: business.instagram,
+        facebook: business.facebook,
+        website: business.website,
+        openingTime: business.openingTime,
+        closingTime: business.closingTime,
+        timezone: business.timezone,
+      },
     });
   } catch (error) {
     console.error("Error al actualizar negocio:", error);
