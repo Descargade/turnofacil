@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
-const PUBLIC_PREFIXES = ["/auth", "/api/auth"];
+const PUBLIC_PREFIXES = ["/auth", "/api/auth", "/api/business/", "/api/public/"];
 
 function isPublicPath(pathname: string) {
   if (pathname === "/") return true;

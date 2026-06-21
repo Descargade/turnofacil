@@ -324,7 +324,7 @@ export default function BookingPage() {
         booking.service.duration
       );
 
-      const res = await fetch("/api/appointments", {
+      const res = await fetch("/api/public/appointments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
