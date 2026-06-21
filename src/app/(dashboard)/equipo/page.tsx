@@ -313,6 +313,8 @@ export default function EquipoPage() {
                   onChange={(v) => setForm((prev) => ({ ...prev, avatar: v }))}
                   aspect="square"
                   className="w-32"
+                  maxDimension={300}
+                  quality={0.75}
                 />
               </div>
 

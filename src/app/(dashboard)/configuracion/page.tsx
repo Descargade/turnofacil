@@ -460,8 +460,8 @@ export default function ConfiguracionPage() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid gap-6 sm:grid-cols-2">
-                <ImageUpload label="Logo del negocio" value={config.logo} onChange={(v) => updateField("logo", v)} aspect="square" />
-                <ImageUpload label="Banner / portada" value={config.banner} onChange={(v) => updateField("banner", v)} aspect="wide" />
+                <ImageUpload label="Logo del negocio" value={config.logo} onChange={(v) => updateField("logo", v)} aspect="square" maxDimension={400} quality={0.8} />
+                <ImageUpload label="Banner / portada" value={config.banner} onChange={(v) => updateField("banner", v)} aspect="wide" maxDimension={1200} quality={0.7} />
               </div>
               <Separator />
               <div>
@@ -507,7 +507,12 @@ export default function ConfiguracionPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <GalleryUpload value={config.gallery} onChange={(v) => updateField("gallery", v)} max={12} />
+              <div className="space-y-4">
+                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                  <span>Las imágenes se comprimen automáticamente para cargar rápido en tu página de reservas.</span>
+                </div>
+                <GalleryUpload value={config.gallery} onChange={(v) => updateField("gallery", v)} max={12} maxDimension={800} quality={0.7} />
+              </div>
               {config.gallery.length === 0 && (
                 <div className="mt-4 rounded-lg border border-dashed p-6 text-center text-muted-foreground">
                   <ImageIcon className="mx-auto mb-2 h-8 w-8 opacity-40" />

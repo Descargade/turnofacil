@@ -10,10 +10,16 @@ interface ImageUploadProps {
   className?: string;
   aspect?: "square" | "wide";
   label?: string;
-  maxSizeKB?: number;
+  maxDimension?: number;
+  quality?: number;
 }
 
-function compressImage(file: File, maxKB: number = 200): Promise<string> {
+function compressImage(
+  file: File,
+  maxKB: number = 200,
+  maxDimension: number = 600,
+  startQuality: number = 0.65
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -24,15 +30,14 @@ function compressImage(file: File, maxKB: number = 200): Promise<string> {
         if (!ctx) return reject(new Error("No canvas context"));
 
         let { width, height } = img;
-        const maxDim = 600;
 
-        if (width > maxDim || height > maxDim) {
+        if (width > maxDimension || height > maxDimension) {
           if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
           } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
           }
         }
 
@@ -40,7 +45,7 @@ function compressImage(file: File, maxKB: number = 200): Promise<string> {
         canvas.height = height;
         ctx.drawImage(img, 0, 0, width, height);
 
-        let quality = 0.7;
+        let quality = startQuality;
         let result = canvas.toDataURL("image/jpeg", quality);
 
         while (result.length > maxKB * 1024 * 1.37 && quality > 0.1) {
@@ -58,12 +63,19 @@ function compressImage(file: File, maxKB: number = 200): Promise<string> {
   });
 }
 
+function getBase64SizeKB(base64: string): number {
+  const raw = base64.split(",")[1] || "";
+  return Math.round((raw.length * 3) / 4 / 1024);
+}
+
 export function ImageUpload({
   value,
   onChange,
   className,
   aspect = "square",
   label,
+  maxDimension = 600,
+  quality = 0.65,
 }: ImageUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
@@ -74,7 +86,7 @@ export function ImageUpload({
 
     setLoading(true);
     try {
-      const compressed = await compressImage(file);
+      const compressed = await compressImage(file, 200, maxDimension, quality);
       onChange(compressed);
     } catch {
       alert("Error al procesar la imagen");
@@ -83,6 +95,8 @@ export function ImageUpload({
       if (inputRef.current) inputRef.current.value = "";
     }
   }
+
+  const sizeKB = value ? getBase64SizeKB(value) : 0;
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -125,6 +139,11 @@ export function ImageUpload({
           </div>
         )}
       </div>
+      {value && sizeKB > 0 && (
+        <p className="text-[10px] text-muted-foreground">
+          {sizeKB} KB
+        </p>
+      )}
       <input
         ref={inputRef}
         type="file"
@@ -140,9 +159,17 @@ interface GalleryUploadProps {
   value: string[];
   onChange: (value: string[]) => void;
   max?: number;
+  maxDimension?: number;
+  quality?: number;
 }
 
-export function GalleryUpload({ value, onChange, max = 10 }: GalleryUploadProps) {
+export function GalleryUpload({
+  value,
+  onChange,
+  max = 10,
+  maxDimension = 600,
+  quality = 0.65,
+}: GalleryUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
 
@@ -156,7 +183,7 @@ export function GalleryUpload({ value, onChange, max = 10 }: GalleryUploadProps)
     setLoading(true);
     try {
       const compressed = await Promise.all(
-        toProcess.map((file) => compressImage(file, 150))
+        toProcess.map((file) => compressImage(file, 150, maxDimension, quality))
       );
       onChange([...value, ...compressed]);
     } catch {
@@ -171,12 +198,17 @@ export function GalleryUpload({ value, onChange, max = 10 }: GalleryUploadProps)
     onChange(value.filter((_, i) => i !== index));
   }
 
+  const totalSizeKB = value.reduce((acc, img) => acc + getBase64SizeKB(img), 0);
+
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
         {value.map((img, i) => (
           <div key={i} className="group relative aspect-square overflow-hidden rounded-lg border">
             <img src={img} alt={`Foto ${i + 1}`} className="h-full w-full object-cover" />
+            <div className="absolute bottom-1 left-1 rounded bg-black/60 px-1 py-0.5 text-[9px] text-white">
+              {getBase64SizeKB(img)} KB
+            </div>
             <button
               type="button"
               onClick={() => removeImage(i)}
@@ -206,6 +238,7 @@ export function GalleryUpload({ value, onChange, max = 10 }: GalleryUploadProps)
       </div>
       <p className="text-xs text-muted-foreground">
         {value.length}/{max} fotos
+        {totalSizeKB > 0 && ` · ~${totalSizeKB} KB total`}
       </p>
       <input
         ref={inputRef}
