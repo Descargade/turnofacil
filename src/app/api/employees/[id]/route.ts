@@ -134,7 +134,7 @@ export async function PUT(
       );
     }
 
-    const { nombre, email, telefono, especialidades, avatar, bio } = parsed.data;
+    const { nombre, email, telefono, especialidades, avatar, bio, servicioIds } = parsed.data;
 
     if (email && email !== existing.email) {
       const duplicateEmail = await prisma.employee.findFirst({
@@ -165,6 +165,15 @@ export async function PUT(
         bio: bio !== undefined ? (bio || null) : existing.bio,
       },
     });
+
+    if (servicioIds !== undefined) {
+      await prisma.employeeService.deleteMany({ where: { employeeId: id } });
+      if (servicioIds.length > 0) {
+        await prisma.employeeService.createMany({
+          data: servicioIds.map((serviceId) => ({ employeeId: id, serviceId })),
+        });
+      }
+    }
 
     return NextResponse.json(employee);
   } catch (error) {

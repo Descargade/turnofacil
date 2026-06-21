@@ -75,7 +75,14 @@ interface Employee {
   specialties: string[];
   isActive: boolean;
   availability: Availability[];
+  services: { id: string; service: { id: string; name: string } }[];
   _count?: { appointments: number };
+}
+
+interface ServiceOption {
+  id: string;
+  name: string;
+  category: string;
 }
 
 const defaultAvailability: Record<number, { start: string; end: string; active: boolean }> = {
@@ -95,10 +102,12 @@ const emptyForm = {
   specialties: [] as string[],
   avatar: null as string | null,
   bio: "",
+  serviceIds: [] as string[],
 };
 
 export default function EquipoPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [allServices, setAllServices] = useState<ServiceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingAvailability, setSavingAvailability] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -127,6 +136,7 @@ export default function EquipoPage() {
 
   useEffect(() => {
     fetchEmployees();
+    fetch("/api/services").then((r) => r.json()).then((d) => setAllServices(Array.isArray(d) ? d : [])).catch(() => {});
   }, [fetchEmployees]);
 
   const filteredEmployees = employees.filter(
@@ -145,6 +155,7 @@ export default function EquipoPage() {
         specialties: employee.specialties,
         avatar: employee.avatar || null,
         bio: employee.bio || "",
+        serviceIds: employee.services ? employee.services.map((s) => s.service.id) : [],
       });
     } else {
       setEditingId(null);
@@ -163,6 +174,7 @@ export default function EquipoPage() {
         especialidades: form.specialties,
         avatar: form.avatar || undefined,
         bio: form.bio || undefined,
+        servicioIds: form.serviceIds,
       };
       if (editingId) {
         const res = await fetch(`/api/employees/${editingId}`, {
@@ -356,6 +368,28 @@ export default function EquipoPage() {
                   ))}
                 </div>
               </div>
+              {allServices.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Servicios que ofrece</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {allServices.map((svc) => (
+                      <Badge
+                        key={svc.id}
+                        variant={form.serviceIds.includes(svc.id) ? "default" : "outline"}
+                        className="cursor-pointer"
+                        onClick={() => setForm((prev) => ({
+                          ...prev,
+                          serviceIds: prev.serviceIds.includes(svc.id)
+                            ? prev.serviceIds.filter((s) => s !== svc.id)
+                            : [...prev.serviceIds, svc.id],
+                        }))}
+                      >
+                        {svc.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => { setDialogOpen(false); setEditingId(null); setForm(emptyForm); }}>

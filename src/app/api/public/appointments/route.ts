@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { format } from "date-fns";
+import { sendBookingConfirmationToClient, sendBookingNotificationToEmployee } from "@/lib/email";
 
 export async function POST(request: Request) {
   try {
@@ -175,9 +177,36 @@ export async function POST(request: Request) {
       },
       include: {
         service: { select: { id: true, name: true, price: true } },
-        employee: { select: { id: true, name: true } },
+        employee: { select: { id: true, name: true, email: true } },
       },
     });
+
+    const dateStr = format(appointmentDate, "yyyy-MM-dd");
+
+    if (customerEmail) {
+      sendBookingConfirmationToClient({
+        to: customerEmail,
+        businessName: business.name,
+        serviceName: service.name,
+        employeeName: employee.name,
+        date: dateStr,
+        startTime,
+        endTime,
+      }).catch(() => {});
+    }
+
+    if (employee.email) {
+      sendBookingNotificationToEmployee({
+        to: employee.email,
+        businessName: business.name,
+        serviceName: service.name,
+        customerName,
+        customerPhone: customerPhone || "No informado",
+        date: dateStr,
+        startTime,
+        endTime,
+      }).catch(() => {});
+    }
 
     return NextResponse.json(appointment, { status: 201 });
   } catch (error) {
