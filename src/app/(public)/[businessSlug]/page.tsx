@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -30,10 +30,6 @@ import {
   Phone,
   Info,
   Star,
-  ChevronUp,
-  ChevronDown,
-  Zap,
-  ImageIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, getInitials, calculateEndTime } from "@/lib/utils";
@@ -76,6 +72,7 @@ interface EmployeeData {
   id: string;
   name: string;
   avatar: string | null;
+  bio: string | null;
   specialties: string[];
   isActive: boolean;
   services: { serviceId: string }[];
@@ -130,7 +127,6 @@ export default function BookingPage() {
   const params = useParams();
   const router = useRouter();
   const businessSlug = params.businessSlug as string;
-  const galleryRef = useRef<HTMLDivElement>(null);
 
   const [business, setBusiness] = useState<BusinessData | null>(null);
   const [services, setServices] = useState<ServiceData[]>([]);
@@ -399,12 +395,6 @@ export default function BookingPage() {
     }
   }
 
-  function scrollGallery(dir: "left" | "right") {
-    if (!galleryRef.current) return;
-    const scrollAmount = dir === "left" ? -200 : 200;
-    galleryRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
-  }
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-surface-50 to-surface-100">
@@ -529,43 +519,67 @@ export default function BookingPage() {
       {/* Galería de fotos */}
       {hasGallery && (
         <div className="border-b border-surface-100 bg-white">
-          <div className="mx-auto max-w-4xl px-4 py-4 sm:px-6">
-            <div className="mb-2 flex items-center justify-between">
+          <div className="mx-auto max-w-4xl px-4 py-5 sm:px-6">
+            <div className="mb-3 flex items-center justify-between">
               <h3 className="text-xs font-bold uppercase tracking-wider text-surface-400">
                 Nuestros trabajos
               </h3>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => scrollGallery("left")}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border text-surface-400 hover:text-surface-600"
-                >
-                  <ChevronLeft className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  onClick={() => scrollGallery("right")}
-                  className="flex h-6 w-6 items-center justify-center rounded-full border text-surface-400 hover:text-surface-600"
-                >
-                  <ChevronRight className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              <span className="text-[10px] text-surface-300">
+                {galleryIndex + 1}/{business.gallery.length}
+              </span>
             </div>
-            <div
-              ref={galleryRef}
-              className="flex gap-3 overflow-x-auto scroll-smooth pb-2 snap-x snap-mandatory"
-              style={{ scrollbarWidth: "none" }}
-            >
-              {business.gallery.map((img, i) => (
-                <div
-                  key={i}
-                  className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border snap-start"
-                >
-                  <img
-                    src={img}
-                    alt={`Trabajo ${i + 1}`}
-                    className="h-full w-full object-cover transition-transform hover:scale-110"
-                  />
+            <div className="relative">
+              {/* Imagen principal */}
+              <div className="relative overflow-hidden rounded-2xl bg-surface-100 aspect-[16/9]">
+                <img
+                  src={business.gallery[galleryIndex]}
+                  alt={`Trabajo ${galleryIndex + 1}`}
+                  className="h-full w-full object-cover"
+                />
+                {business.gallery.length > 1 && (
+                  <>
+                    <button
+                      onClick={() =>
+                        setGalleryIndex((prev) =>
+                          prev === 0 ? business.gallery.length - 1 : prev - 1
+                        )
+                      }
+                      className="absolute left-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() =>
+                        setGalleryIndex((prev) =>
+                          prev === business.gallery.length - 1 ? 0 : prev + 1
+                        )
+                      }
+                      className="absolute right-2 top-1/2 -translate-y-1/2 flex h-8 w-8 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </>
+                )}
+              </div>
+              {/* Thumbnails */}
+              {business.gallery.length > 1 && (
+                <div className="mt-3 flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+                  {business.gallery.map((img, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setGalleryIndex(i)}
+                      className={`h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg border-2 transition-all ${
+                        i === galleryIndex
+                          ? "border-current shadow-md opacity-100"
+                          : "border-transparent opacity-50 hover:opacity-75"
+                      }`}
+                      style={i === galleryIndex ? { borderColor: primaryColor } : {}}
+                    >
+                      <img src={img} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>
@@ -751,6 +765,11 @@ export default function BookingPage() {
                               </span>
                             ))}
                           </div>
+                        )}
+                        {employee.bio && (
+                          <p className="mt-1.5 text-xs text-surface-400 line-clamp-2 italic">
+                            {employee.bio}
+                          </p>
                         )}
                       </div>
                     </div>

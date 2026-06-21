@@ -16,7 +16,6 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -24,8 +23,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +35,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ImageUpload } from "@/components/ui/image-upload";
 
 const allSpecialties = [
   "Corte masculino",
@@ -69,6 +70,8 @@ interface Employee {
   name: string;
   email: string | null;
   phone: string | null;
+  avatar: string | null;
+  bio: string | null;
   specialties: string[];
   isActive: boolean;
   availability: Availability[];
@@ -90,6 +93,8 @@ const emptyForm = {
   email: "",
   phone: "",
   specialties: [] as string[],
+  avatar: null as string | null,
+  bio: "",
 };
 
 export default function EquipoPage() {
@@ -100,21 +105,21 @@ export default function EquipoPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
+  const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
   const [availabilityForm, setAvailabilityForm] = useState<
     Record<number, { start: string; end: string; active: boolean }>
   >(defaultAvailability);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
-  const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);
 
   const fetchEmployees = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch("/api/employees");
-      if (!res.ok) throw new Error("Error al cargar empleados");
+      if (!res.ok) throw new Error("Error al cargar");
       const data = await res.json();
       setEmployees(data);
     } catch {
-      console.error("Error al cargar empleados");
+      console.error("Error");
     } finally {
       setLoading(false);
     }
@@ -138,6 +143,8 @@ export default function EquipoPage() {
         email: employee.email || "",
         phone: employee.phone || "",
         specialties: employee.specialties,
+        avatar: employee.avatar || null,
+        bio: employee.bio || "",
       });
     } else {
       setEditingId(null);
@@ -148,50 +155,56 @@ export default function EquipoPage() {
 
   const handleSaveEmployee = async () => {
     if (!form.name.trim()) return;
-
     try {
+      const payload = {
+        nombre: form.name,
+        email: form.email || undefined,
+        telefono: form.phone || undefined,
+        especialidades: form.specialties,
+        avatar: form.avatar || undefined,
+        bio: form.bio || undefined,
+      };
       if (editingId) {
         const res = await fetch(`/api/employees/${editingId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nombre: form.name,
-            email: form.email || undefined,
-            telefono: form.phone || undefined,
-            especialidades: form.specialties,
-          }),
+          body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error("Error al actualizar empleado");
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Error al actualizar");
+        }
       } else {
         const res = await fetch("/api/employees", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nombre: form.name,
-            email: form.email || undefined,
-            telefono: form.phone || undefined,
-            especialidades: form.specialties,
-          }),
+          body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error("Error al crear empleado");
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Error al crear");
+        }
       }
       await fetchEmployees();
       setDialogOpen(false);
       setForm(emptyForm);
       setEditingId(null);
-    } catch {
-      console.error("Error al guardar empleado");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Error al guardar");
     }
   };
 
   const handleDeleteEmployee = async (id: string) => {
-    if (!confirm("¿Estás seguro de que querés eliminar este empleado?")) return;
+    if (!confirm("¿Eliminar este empleado?")) return;
     try {
       const res = await fetch(`/api/employees/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Error al eliminar empleado");
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error || "Error al eliminar");
+      }
       await fetchEmployees();
     } catch {
-      console.error("Error al eliminar empleado");
+      console.error("Error");
     }
   };
 
@@ -202,19 +215,6 @@ export default function EquipoPage() {
         ? prev.specialties.filter((s) => s !== specialty)
         : [...prev.specialties, specialty],
     }));
-  };
-
-  const getInitials = (name: string) =>
-    name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase();
-
-  const getScheduleSummary = (emp: Employee) => {
-    const activeDays = emp.availability.filter((a) => a.isActive);
-    return `${activeDays.length} días/semana`;
   };
 
   const openAvailabilityDialog = (employee: Employee) => {
@@ -248,38 +248,38 @@ export default function EquipoPage() {
 
   const handleSaveAvailability = async () => {
     if (!selectedEmployeeId) return;
-
     setSavingAvailability(true);
     try {
-      const disponibilidad = daysOfWeek.map((day) => ({
-        diaSemana: day.index,
-        horaInicio: availabilityForm[day.index].start,
-        horaFin: availabilityForm[day.index].end,
-        activo: availabilityForm[day.index].active,
-      }));
-
       const res = await fetch("/api/availability", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           empleadoId: selectedEmployeeId,
-          disponibilidad,
+          disponibilidad: daysOfWeek.map((day) => ({
+            diaSemana: day.index,
+            horaInicio: availabilityForm[day.index].start,
+            horaFin: availabilityForm[day.index].end,
+            activo: availabilityForm[day.index].active,
+          })),
         }),
       });
-
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error || "Error al guardar disponibilidad");
+        throw new Error(data.error || "Error al guardar");
       }
-
       await fetchEmployees();
       setAvailabilityDialogOpen(false);
       setSelectedEmployeeId(null);
-    } catch {
-      console.error("Error al guardar disponibilidad");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Error");
     } finally {
       setSavingAvailability(false);
     }
+  };
+
+  const getScheduleSummary = (emp: Employee) => {
+    const activeDays = emp.availability.filter((a) => a.isActive);
+    return `${activeDays.length} días/semana`;
   };
 
   return (
@@ -288,69 +288,55 @@ export default function EquipoPage() {
         <div>
           <h1 className="text-2xl font-bold">Equipo</h1>
           <p className="text-muted-foreground">
-            Gestioná los empleados y su disponibilidad horaria
+            Gestioná los empleados, fotos de perfil y disponibilidad
           </p>
         </div>
-        <Dialog
-          open={dialogOpen}
-          onOpenChange={(open) => {
-            setDialogOpen(open);
-            if (!open) {
-              setEditingId(null);
-              setForm(emptyForm);
-            }
-          }}
-        >
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingId(null); setForm(emptyForm); } }}>
           <DialogTrigger asChild>
             <Button onClick={() => handleOpenDialog()}>
               <Plus className="mr-2 h-4 w-4" />
               Nuevo empleado
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[550px] max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>
-                {editingId ? "Editar empleado" : "Nuevo empleado"}
-              </DialogTitle>
+              <DialogTitle>{editingId ? "Editar empleado" : "Nuevo empleado"}</DialogTitle>
               <DialogDescription>
-                {editingId
-                  ? "Modificá los datos del empleado"
-                  : "Completá los datos para agregar un empleado"}
+                {editingId ? "Modificá los datos del empleado" : "Completá los datos para agregar"}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label htmlFor="emp-name">Nombre completo *</Label>
-                <Input
-                  id="emp-name"
-                  value={form.name}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, name: e.target.value }))
-                  }
-                  placeholder="Ej: Carlos Ruiz"
+              {/* Foto de perfil */}
+              <div className="flex justify-center">
+                <ImageUpload
+                  value={form.avatar}
+                  onChange={(v) => setForm((prev) => ({ ...prev, avatar: v }))}
+                  aspect="square"
+                  className="w-32"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="emp-email">Email</Label>
-                <Input
-                  id="emp-email"
-                  type="email"
-                  value={form.email}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, email: e.target.value }))
-                  }
-                  placeholder="correo@email.com"
-                />
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Nombre completo *</Label>
+                  <Input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Ej: Carlos Ruiz" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input type="email" value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="correo@email.com" />
+                </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="emp-phone">Teléfono</Label>
-                <Input
-                  id="emp-phone"
-                  value={form.phone}
-                  onChange={(e) =>
-                    setForm((prev) => ({ ...prev, phone: e.target.value }))
-                  }
-                  placeholder="+54 11 1234-5678"
+                <Label>Teléfono</Label>
+                <Input value={form.phone} onChange={(e) => setForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="+54 11 1234-5678" />
+              </div>
+              <div className="space-y-2">
+                <Label>Biografía / Descripción</Label>
+                <Textarea
+                  value={form.bio}
+                  onChange={(e) => setForm((prev) => ({ ...prev, bio: e.target.value }))}
+                  rows={3}
+                  placeholder="Ej: Barbero profesional con 10 años de experiencia..."
                 />
               </div>
               <div className="space-y-2">
@@ -359,9 +345,7 @@ export default function EquipoPage() {
                   {allSpecialties.map((spec) => (
                     <Badge
                       key={spec}
-                      variant={
-                        form.specialties.includes(spec) ? "default" : "outline"
-                      }
+                      variant={form.specialties.includes(spec) ? "default" : "outline"}
                       className="cursor-pointer"
                       onClick={() => toggleSpecialty(spec)}
                     >
@@ -372,14 +356,7 @@ export default function EquipoPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setDialogOpen(false);
-                  setEditingId(null);
-                  setForm(emptyForm);
-                }}
-              >
+              <Button variant="outline" onClick={() => { setDialogOpen(false); setEditingId(null); setForm(emptyForm); }}>
                 Cancelar
               </Button>
               <Button onClick={handleSaveEmployee}>
@@ -392,12 +369,7 @@ export default function EquipoPage() {
 
       <div className="relative">
         <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Buscar empleados..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-8"
-        />
+        <Input placeholder="Buscar empleados..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-8" />
       </div>
 
       {loading ? (
@@ -408,13 +380,9 @@ export default function EquipoPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Users className="mb-4 h-12 w-12 text-muted-foreground/50" />
-            <h3 className="mb-1 text-lg font-semibold">
-              No hay empleados
-            </h3>
+            <h3 className="mb-1 text-lg font-semibold">No hay empleados</h3>
             <p className="mb-4 text-sm text-muted-foreground">
-              {searchQuery
-                ? "No se encontraron empleados con esa búsqueda"
-                : "Empezá agregando tu primer empleado"}
+              {searchQuery ? "Sin resultados" : "Empezá agregando uno"}
             </p>
             {!searchQuery && (
               <Button onClick={() => handleOpenDialog()}>
@@ -430,19 +398,16 @@ export default function EquipoPage() {
             <Card key={employee.id}>
               <CardHeader className="pb-3">
                 <div className="flex items-start gap-3">
-                  <Avatar className="h-12 w-12">
-                    <AvatarFallback className="bg-primary/10 text-primary">
-                      {getInitials(employee.name)}
+                  <Avatar className="h-14 w-14">
+                    <AvatarImage src={employee.avatar || undefined} alt={employee.name} className="object-cover" />
+                    <AvatarFallback className="bg-primary/10 text-primary text-lg font-bold">
+                      {employee.name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex-1">
-                    <CardTitle className="text-base">
-                      {employee.name}
-                    </CardTitle>
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-base">{employee.name}</CardTitle>
                     <div className="flex items-center gap-2 mt-1">
-                      <Badge
-                        variant={employee.isActive ? "default" : "secondary"}
-                      >
+                      <Badge variant={employee.isActive ? "default" : "secondary"}>
                         {employee.isActive ? "Activo" : "Inactivo"}
                       </Badge>
                     </div>
@@ -450,11 +415,16 @@ export default function EquipoPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3 pb-3">
+                {employee.bio && (
+                  <p className="text-sm text-muted-foreground line-clamp-2 italic">
+                    &ldquo;{employee.bio}&rdquo;
+                  </p>
+                )}
                 <div className="space-y-1">
                   {employee.email && (
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                       <Mail className="h-3.5 w-3.5" />
-                      {employee.email}
+                      <span className="truncate">{employee.email}</span>
                     </div>
                   )}
                   {employee.phone && (
@@ -477,28 +447,15 @@ export default function EquipoPage() {
                 </div>
               </CardContent>
               <CardFooter className="gap-2 border-t pt-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => openAvailabilityDialog(employee)}
-                >
+                <Button variant="ghost" size="sm" onClick={() => openAvailabilityDialog(employee)}>
                   <Clock className="mr-1 h-3.5 w-3.5" />
                   Horarios
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleOpenDialog(employee)}
-                >
+                <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(employee)}>
                   <Pencil className="mr-1 h-3.5 w-3.5" />
                   Editar
                 </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => handleDeleteEmployee(employee.id)}
-                >
+                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteEmployee(employee.id)}>
                   <Trash2 className="mr-1 h-3.5 w-3.5" />
                 </Button>
               </CardFooter>
@@ -507,95 +464,40 @@ export default function EquipoPage() {
         </div>
       )}
 
-      {/* Dialog de disponibilidad */}
-      <Dialog
-        open={availabilityDialogOpen}
-        onOpenChange={(open) => {
-          setAvailabilityDialogOpen(open);
-          if (!open) setSelectedEmployeeId(null);
-        }}
-      >
+      {/* Dialog disponibilidad */}
+      <Dialog open={availabilityDialogOpen} onOpenChange={(open) => { setAvailabilityDialogOpen(open); if (!open) setSelectedEmployeeId(null); }}>
         <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Disponibilidad horaria</DialogTitle>
-            <DialogDescription>
-              Configurá los días y horarios en que el empleado trabaja
-            </DialogDescription>
+            <DialogDescription>Días y horarios en que trabaja</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
             {daysOfWeek.map((day) => {
               const dayForm = availabilityForm[day.index];
               return (
-                <div
-                  key={day.index}
-                  className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${
-                    dayForm.active
-                      ? "border-primary/30 bg-primary/5"
-                      : "border-border bg-muted/30 opacity-60"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => toggleDay(day.index)}
-                    className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-colors ${
-                      dayForm.active
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-muted-foreground/30 bg-background"
-                    }`}
-                  >
-                    {dayForm.active && (
-                      <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
-                        <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
+                <div key={day.index} className={`flex items-center gap-3 rounded-lg border p-3 transition-colors ${dayForm.active ? "border-primary/30 bg-primary/5" : "border-border bg-muted/30 opacity-60"}`}>
+                  <button type="button" onClick={() => toggleDay(day.index)} className={`h-5 w-5 rounded-md border-2 flex items-center justify-center transition-colors ${dayForm.active ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/30 bg-background"}`}>
+                    {dayForm.active && <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
                   </button>
                   <span className="w-24 text-sm font-medium">{day.key}</span>
                   {dayForm.active ? (
                     <div className="flex items-center gap-2 ml-auto">
-                      <Input
-                        type="time"
-                        value={dayForm.start}
-                        onChange={(e) =>
-                          updateDayTime(day.index, "start", e.target.value)
-                        }
-                        className="w-[110px] h-8 text-xs"
-                      />
+                      <Input type="time" value={dayForm.start} onChange={(e) => updateDayTime(day.index, "start", e.target.value)} className="w-[110px] h-8 text-xs" />
                       <span className="text-xs text-muted-foreground">a</span>
-                      <Input
-                        type="time"
-                        value={dayForm.end}
-                        onChange={(e) =>
-                          updateDayTime(day.index, "end", e.target.value)
-                        }
-                        className="w-[110px] h-8 text-xs"
-                      />
+                      <Input type="time" value={dayForm.end} onChange={(e) => updateDayTime(day.index, "end", e.target.value)} className="w-[110px] h-8 text-xs" />
                     </div>
                   ) : (
-                    <span className="ml-auto text-xs text-muted-foreground">
-                      No trabaja
-                    </span>
+                    <span className="ml-auto text-xs text-muted-foreground">No trabaja</span>
                   )}
                 </div>
               );
             })}
           </div>
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setAvailabilityDialogOpen(false);
-                setSelectedEmployeeId(null);
-              }}
-            >
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={() => { setAvailabilityDialogOpen(false); setSelectedEmployeeId(null); }}>Cancelar</Button>
             <Button onClick={handleSaveAvailability} disabled={savingAvailability}>
-              {savingAvailability ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Save className="mr-2 h-4 w-4" />
-              )}
-              Guardar horarios
+              {savingAvailability ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+              Guardar
             </Button>
           </DialogFooter>
         </DialogContent>

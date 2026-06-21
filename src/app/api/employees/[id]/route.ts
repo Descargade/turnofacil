@@ -134,7 +134,7 @@ export async function PUT(
       );
     }
 
-    const { nombre, email, telefono, especialidades } = parsed.data;
+    const { nombre, email, telefono, especialidades, avatar, bio } = parsed.data;
 
     if (email && email !== existing.email) {
       const duplicateEmail = await prisma.employee.findFirst({
@@ -161,6 +161,8 @@ export async function PUT(
         email: email || null,
         phone: telefono || null,
         specialties: especialidades,
+        avatar: avatar !== undefined ? (avatar || null) : existing.avatar,
+        bio: bio !== undefined ? (bio || null) : existing.bio,
       },
     });
 

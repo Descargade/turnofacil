@@ -87,7 +87,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { nombre, email, telefono, especialidades } = parsed.data;
+    const { nombre, email, telefono, especialidades, avatar, bio } = parsed.data;
 
     if (email) {
       const existingEmployee = await prisma.employee.findFirst({
@@ -113,6 +113,8 @@ export async function POST(request: Request) {
         email: email || null,
         phone: telefono || null,
         specialties: especialidades,
+        avatar: avatar || null,
+        bio: bio || null,
       },
     });
 

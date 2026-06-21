@@ -89,6 +89,7 @@ export async function GET(
         id: e.id,
         name: e.name,
         avatar: e.avatar,
+        bio: e.bio,
         specialties: e.specialties,
         isActive: e.isActive,
         services: e.services.map((s) => ({ serviceId: s.serviceId })),

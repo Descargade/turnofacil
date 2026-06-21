@@ -80,6 +80,8 @@ export const employeeSchema = z.object({
   especialidades: z
     .array(z.string())
     .min(1, "Seleccione al menos una especialidad"),
+  avatar: z.string().optional().or(z.literal("")),
+  bio: z.string().max(500, "La biografía es demasiado larga").optional().or(z.literal("")),
 });
 
 export type EmployeeInput = z.infer<typeof employeeSchema>;
